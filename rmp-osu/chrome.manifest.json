@@ -15,20 +15,6 @@
   "host_permissions": [
       "https://www.ratemyprofessors.com/*"
   ],
-  "background": {
-    "type": "module",
-    "scripts": [
-      "browser.js"
-    ]
-  },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "{adf0672d-08cd-4a2e-bc17-e00e3f155d26}",
-      "data_collection_permissions": {
-        "required": ["websiteContent"]
-      }
-    }
-  },
   "content_scripts": [
     {
       "js": [
