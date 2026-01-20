@@ -5,8 +5,6 @@ An extension for Firefox and Chrome (WIP). Create an issue for any feature reque
 Find out the ratings of professors at Oregon State University, without having to switch tabs or copy names. 
 Ratings aren't everything*, but use your best judgement.
 
-<sup><sub>*I've never heard this from professors with good ratings</sub></sup>
-
 ## Features
 - Adds rating under the "Instructor" section in the details after clicking on a class
 - Adds number of ratings also in that place
@@ -17,3 +15,5 @@ Works automatically. Just navigate to [classes.oregonstate.edu](https://classes.
 
 ## Performance
 I haven't tested the performance impact, but it shouldn't be much.
+
+<sup><sub>*I've never heard this from professors with good ratings</sub></sup>
