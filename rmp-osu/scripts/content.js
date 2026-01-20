@@ -20,30 +20,45 @@ function addProfData(name, element) {
         name: name
     }, (response) => {
         console.log("RMP-OSU: Handle RMP data for " + name);
-        if (!response || response.quality === null) {
+        if (!response || response.error) {
+            console.error("RMP-OSU: Error fetching RMP data for " + name + ": " + response.error);
             return;
         }
         console.log("RMP data for " + name + ": ", response);
-        return;
 
+        element.textContent = "";
         const ratingEl = document.createElement("div");
         ratingEl.style.marginTop = "5px";
         ratingEl.style.fontSize = "14px";
-        ratingEl.innerHTML = `
-            Quality: ${response.quality} / 5<br>
-            Difficulty: ${response.difficulty} / 5<br>
-            Number of Ratings: ${response.numRatings}<br>
-            Would Take Again: ${response.takeAgain}%<br>
-            <a href="https://www.ratemyprofessors.com${response.profLink}" target="_blank">View on RateMyProfessors.com</a>
-        `;
-        instructorEl[0].appendChild(ratingEl);
+
+        let text = "";
+
+
+        if (response.profLink && response.quality && response.numRatings) {
+            text = `<a href="https://www.ratemyprofessors.com${response.profLink}" target="_blank"><strong>${name}</strong></a>  ${response.quality}⭐ (${response.numRatings} ratings)`;
+        }        
+        else {
+            console.error("RMP-OSU: Prof not in RMP data for " + name);
+            text = `<strong> ${name}</strong> (No RMP Data)`;
+        }
+
+        if (response.numRatings == 0) {
+            text = `<a href="https://www.ratemyprofessors.com${response.profLink}" target="_blank"><strong>${name}</strong></a> (No ratings)`;
+        }        
+
+        ratingEl.innerHTML = text;
+
+        element.classList.add("rmp-osu-injected");
+        element.appendChild(ratingEl);
     });
 }
 
 setInterval(() => {
     const instructorEl = getProfessorElementsInClassDescription();
     if (!instructorEl || instructorEl.length === 0) return;
+
     for (let i = 0; i < instructorEl.length; i++) {
+        if (instructorEl[i].classList.contains("rmp-osu-injected")) continue;
         const instructorName = instructorEl[i].textContent?.trim();
         console.log("RMP-OSU: Found instructor name:", instructorEl[i].textContent);
         if (instructorName == null) continue;

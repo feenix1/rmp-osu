@@ -9,11 +9,18 @@
     "48": "images/48.png",
     "128": "images/128.png"
   },
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
       "https://www.ratemyprofessors.com/*"
   ],
   "background": {
-    "service_worker": "browser.js"
+    "service_worker": "browser.js",
+    "type": "module",
+    "scripts": [
+      "browser.js"
+    ]
   },
   "content_scripts": [
     {
