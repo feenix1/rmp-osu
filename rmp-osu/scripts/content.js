@@ -36,6 +36,9 @@ function addProfData(name, element) {
 
         if (response.profLink && response.quality && response.numRatings) {
             text = `<a href="https://www.ratemyprofessors.com${response.profLink}" target="_blank"><strong>${name}</strong></a>  ${response.quality}⭐ (${response.numRatings} ratings)`;
+            if (response.numRatings == 1) {
+                text = `<a href="https://www.ratemyprofessors.com${response.profLink}" target="_blank"><strong>${name}</strong></a>  ${response.quality}⭐ (${response.numRatings} rating)`;
+            }
         }        
         else {
             console.error("RMP-OSU: Prof not in RMP data for " + name);
