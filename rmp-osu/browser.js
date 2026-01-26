@@ -32,6 +32,33 @@ async function fetchWebProfData(name) {
     return await fetch(`https://www.ratemyprofessors.com/search/professors/742?q=${query}`, { headers: header });
 }
 
+//#region Chrome Parse Web
+
+// On Chrome, use offscreen document due to lack of DOMParser in service workers
+async function parseWebResponse(name, res) {
+    if (!res.ok) {
+        console.log("RMP-OSU: Network response was not ok");
+        return { error: "Network response was not ok" };
+    }
+    try {
+        const text = await res.text();
+        console.log("RMP-OSU: Got response text for " + name);
+        await setupOffscreenDocument('parse-rmp-data.html');
+        console.log("RMP-OSU: Offscreen document ready for " + name);
+        const profData = await chrome.runtime.sendMessage({
+            type: "parseRMPResponse",
+            name: name,
+            text: text
+        })
+        console.log("RMP-OSU: Received parsed data for " + name + ": ", profData);
+        return profData;
+    }
+    catch (e) {
+        console.error("RMP-OSU: Error parsing response text for " + name + ": " + e);
+        return { error: "Error parsing response text" };
+    }
+}
+
 // Credit: https://developer.chrome.com/docs/extensions/reference/api/offscreen
 let creating; // A global promise to avoid concurrency issues
 async function setupOffscreenDocument(path) {
@@ -61,30 +88,78 @@ async function setupOffscreenDocument(path) {
   }
 }
 
-// On Chrome, in parse-response due to lack of DOMParser in service workers
-async function parseWebResponse(name, res) {
-    if (!res.ok) {
-        console.log("RMP-OSU: Network response was not ok");
-        return { error: "Network response was not ok" };
-    }
-    try {
-        const text = await res.text();
-        console.log("RMP-OSU: Got response text for " + name);
-        await setupOffscreenDocument('parse-rmp-data.html');
-        console.log("RMP-OSU: Offscreen document ready for " + name);
-        const profData = await chrome.runtime.sendMessage({
-            type: "parseRMPResponse",
-            name: name,
-            text: text
-        })
-        console.log("RMP-OSU: Received parsed data for " + name + ": ", profData);
-        return profData;
-    }
-    catch (e) {
-        console.error("RMP-OSU: Error parsing response text for " + name + ": " + e);
-        return { error: "Error parsing response text" };
-    }
-}
+//#endregion
+
+//#region Firefox Parse Web
+
+// Firefox has DOMParser in service workers
+// async function parseWebResponse(name, res) {
+//     if (!res.ok) {
+//         console.log("RMP-OSU: Network response was not ok");
+//         return { error: "Network response was not ok" };
+//     }
+//     try {
+//         const text = await res.text();
+//         const parser = new DOMParser();
+//         const doc = parser.parseFromString(text, "text/html");
+
+//         const nodes = doc.querySelectorAll(
+//             '[class^="TeacherCard__StyledTeacherCard"]'
+//         );
+
+//         let quality;
+//         let difficulty;
+//         let numRatings;
+//         let takeAgain;
+//         let profLink;
+
+//         for (const node of nodes) {
+//             const profNameEl = node.querySelector(
+//                 '[class^="CardName__StyledCardName"]'
+//             );
+//             const profName = profNameEl ? profNameEl.textContent.trim() : "";
+
+//             if (profName.toLowerCase() !== name.toLowerCase()) continue;
+
+//             const qualityEl = node.querySelector(
+//                 '[class^="CardNumRating__CardNumRatingNumber"]'
+//             );
+//             quality = qualityEl ? qualityEl.textContent.trim() : null;
+//             const difficultyEl = node.querySelector(
+//                 '[class^="CardFeedback__CardFeedbackNumber"]'
+//             );
+//             difficulty = difficultyEl ? difficultyEl.textContent.trim() : null;
+//             const numRatingsEl = node.querySelector(
+//                 '[class^="CardNumRating__CardNumRatingCount"]'
+//             );
+//             numRatings = numRatingsEl ? numRatingsEl.textContent.trim().split(" ")[0] : null;
+//             const takeAgainEl = node.querySelector(
+//                 '[class^="CardFeedback__CardFeedbackNumber"]'
+//             );
+//             takeAgain = takeAgainEl ? takeAgainEl.textContent.trim() : null;
+//             profLink = node.getAttribute("href");
+//             break;
+//         }
+
+//         const data = {
+//             name,
+//             quality,
+//             difficulty,
+//             numRatings,
+//             takeAgain,
+//             profLink
+//         }
+
+//         console.log("RMP-OSU: Parsed RMP data for " + name + ": ", data);
+//         return data;
+        
+//     } catch (error) {
+//         console.error("Error parsing RMP response:", error);
+//         return { error: "Error parsing RMP response" };
+//     }
+// }
+
+//#endregion
 
 function cacheProfData(name, data) {
     let cached = { ...data };
