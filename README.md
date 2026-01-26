@@ -1,5 +1,5 @@
 # OSU Classes + Rate My Professor
-An extension for Firefox and Chrome (WIP). Create an issue for any feature requests and bugs.
+An extension for [Chrome](https://chromewebstore.google.com/detail/osu-scheduler-+-rate-my-p/dcjnmpjjnnddibpjolcpdpkbpjljmhge) and [Firefox](https://addons.mozilla.org/en-US/firefox/addon/osu-classes-rate-my-professor/). Create an issue for any feature requests and bugs.
 
 ## Description
 Find out the ratings of professors at Oregon State University, without having to switch tabs or copy names. 
@@ -16,4 +16,4 @@ Works automatically. Just navigate to [classes.oregonstate.edu](https://classes.
 ## Performance
 I haven't tested the performance impact, but it shouldn't be much.
 
-<sup><sub>*I've never heard this from professors with good ratings</sub></sup>
+<sup><sub>Positive tends to be more reliable than negative</sub></sup>
