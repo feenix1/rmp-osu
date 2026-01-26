@@ -16,4 +16,4 @@ Works automatically. Just navigate to [classes.oregonstate.edu](https://classes.
 ## Performance
 I haven't tested the performance impact, but it shouldn't be much.
 
-<sup><sub>Positive tends to be more reliable than negative</sub></sup>
+<sup><sub>*Positive tends to be more reliable than negative</sub></sup>
