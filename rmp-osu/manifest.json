@@ -10,11 +10,15 @@
     "128": "images/128.png"
   },
   "permissions": [
+    "offscreen",
     "storage"
   ],
   "host_permissions": [
       "https://www.ratemyprofessors.com/*"
   ],
+  "background": {
+    "service_worker": "browser.js"
+  },
   "content_scripts": [
     {
       "js": [
