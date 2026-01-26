@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "OSU Scheduler + Rate My Professor",
   "description": "Adds Rate My Professor scores to all available instructors on classes.oregonstate.edu",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "icons": {
     "16": "images/16.png",
     "32": "images/32.png",
@@ -15,6 +15,20 @@
   "host_permissions": [
       "https://www.ratemyprofessors.com/*"
   ],
+  "background": {
+    "type": "module",
+    "scripts": [
+      "browser.js"
+    ]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{adf0672d-08cd-4a2e-bc17-e00e3f155d26}",
+      "data_collection_permissions": {
+        "required": ["websiteContent"]
+      }
+    }
+  },
   "content_scripts": [
     {
       "js": [
