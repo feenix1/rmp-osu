@@ -7,6 +7,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
 });
 
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type !== "fetchRequest") return;
+    const url = msg.url;
+    const method = msg.method || "GET";
+    const headers = msg.headers || {};
+    const body = msg.body || null;
+    fetch(url, { method, headers, body })
+        .then(res => res.text())
+        .then(text => sendResponse({ success: true, data: text }))
+        .catch(error => sendResponse({ success: false, error: error.toString() }));
+    return true;
+});
+
 async function getProfData(name) {
     let data = await getCachedProfData(name);
     if (outputValid(data)) {
