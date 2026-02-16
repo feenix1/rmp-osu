@@ -9,10 +9,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type !== "getNameFromCRN") return;
+    console.log("RMP-OSU: Service worker received getNameFromCRN message for " + msg.crn);
+    getInstructorForCRN(msg.crn).then(instructorName => {
+        sendResponse(instructorName);
+    });
+    return true;
+})
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type !== "fetchRequest") return;
     const url = msg.url;
     const method = msg.method || "GET";
-    const headers = msg.headers || {};
+    const headers = msg.headers || {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+    };
     const body = msg.body || null;
     fetch(url, { method, headers, body })
         .then(res => res.text())
@@ -35,13 +46,46 @@ async function getProfData(name) {
     return data;
 }
 
+async function getSectionDataFor(className) {
+    const response = await fetch(
+        "https://classes.oregonstate.edu/api/?page=fose&route=details",
+        {
+            method: "POST",
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+                "Content-Type": "application/json",
+                "Host": "classes.oregonstate.edu",
+            },
+            body: `{"group": "code:${className}"`
+        }
+    )
+    const parsed = await response.json()
+    return parsed.allInGroup;
+}
+
+async function getInstructorForCRN(crn) {
+    const response = await fetch(
+        "https://classes.oregonstate.edu/api/?page=fose&route=details",
+        {
+            method: "POST",
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+                "Content-Type": "application/json",
+                "Host": "classes.oregonstate.edu",
+            },
+            body: `{"key": "crn:${crn}"}`
+        }
+    );
+    const parsed = await response.json();
+    const instructorHtml = parsed.instructordetail_html;
+    return await getIntructorNameFromHTMLString(instructorHtml);
+}
+
 async function fetchWebProfData(name) {
     const query = encodeURIComponent(name);
-
     const header = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
     };
-
     return await fetch(`https://www.ratemyprofessors.com/search/professors/742?q=${query}`, { headers: header });
 }
 
@@ -70,6 +114,15 @@ async function parseWebResponse(name, res) {
         console.error("RMP-OSU: Error parsing response text for " + name + ": " + e);
         return { error: "Error parsing response text" };
     }
+}
+
+async function getIntructorNameFromHTMLString(htmlString) {
+    await setupOffscreenDocument('get-text.html');
+    const instructorName = await chrome.runtime.sendMessage({
+        type: "getText",
+        htmlString: htmlString
+    })
+    return instructorName;
 }
 
 // Credit: https://developer.chrome.com/docs/extensions/reference/api/offscreen
