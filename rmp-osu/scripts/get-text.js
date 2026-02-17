@@ -4,6 +4,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const name = msg.name;
     const htmlString = msg.htmlString;
     const parser = new DOMParser();
-    const element = parser.parseFromString(htmlString, "text/html");
-    sendResponse(element.textContent);
+    const doc = parser.parseFromString(htmlString, "text/html");
+    console.log(`${doc}`)
+    const text = doc.querySelector(".instructor-detail")?.textContent;
+    if (text == null) {
+        sendResponse("Staff")
+    }
+    else {
+        sendResponse(text);
+    }
 })

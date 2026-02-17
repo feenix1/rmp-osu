@@ -11,9 +11,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type !== "getNameFromCRN") return;
     console.log("RMP-OSU: Service worker received getNameFromCRN message for " + msg.crn);
-    getInstructorForCRN(msg.crn).then(instructorName => {
-        sendResponse(instructorName);
-    });
+    getInstructorForCRN(msg.crn).then((name) => {
+        sendResponse(name);
+        console.log(`RMP-OSU: Returning ${name} for message.`)
+    })
     return true;
 })
 
@@ -33,15 +34,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 async function getProfData(name) {
-    let data = await getCachedProfData(name);
-    if (outputValid(data)) {
-        console.log("RMP-OSU: Returning cached data for " + name);
-        return data;
-    }
-    console.log("RMP-OSU: No valid cached data for " + name + ", fetching from web.");
     const res = await fetchWebProfData(name);
     data = await parseWebResponse(name, res);
-    cacheProfData(name, data);
     console.log("RMP-OSU: Returning fetched data for " + name);
     return data;
 }
@@ -64,6 +58,7 @@ async function getSectionDataFor(className) {
 }
 
 async function getInstructorForCRN(crn) {
+    console.log(`Recieved request to find instructor for crn: ${crn}`)
     const response = await fetch(
         "https://classes.oregonstate.edu/api/?page=fose&route=details",
         {
@@ -78,7 +73,10 @@ async function getInstructorForCRN(crn) {
     );
     const parsed = await response.json();
     const instructorHtml = parsed.instructordetail_html;
-    return await getIntructorNameFromHTMLString(instructorHtml);
+    console.log(`Recieved raw html: ${instructorHtml}, parsing`);
+    const instructorName = await getIntructorNameFromHTMLString(instructorHtml);
+    console.log(`Parsed into: ${instructorName}`);
+    return instructorName;
 }
 
 async function fetchWebProfData(name) {
@@ -100,7 +98,7 @@ async function parseWebResponse(name, res) {
     try {
         const text = await res.text();
         console.log("RMP-OSU: Got response text for " + name);
-        await setupOffscreenDocument('parse-rmp-data.html');
+        await setupOffscreenDocument('parse-response.html');
         console.log("RMP-OSU: Offscreen document ready for " + name);
         const profData = await chrome.runtime.sendMessage({
             type: "parseRMPResponse",
@@ -226,39 +224,3 @@ async function setupOffscreenDocument(path) {
 // }
 
 //#endregion
-
-function cacheProfData(name, data) {
-    let cached = { ...data };
-    cached.timestamp = Date.now();
-    chrome.storage.local.set({ [name]: data });
-    console.log("RMP-OSU: Cached data for " + name, cached);
-}
-
-async function getCachedProfData(name, maxAgeHours = 24) {
-    console.log("RMP-OSU: Checking cache for " + name);
-    const cached = await chrome.storage.local.get(name);
-    if (!cached || !cached[name]) {
-        console.log("RMP-OSU: No cached data for " + name);
-        return { error: "No cached data" };
-    }
-    const data = cached[name];
-    if (Date.now() - data.timestamp > maxAgeHours * 3600000) {
-        chrome.storage.local.remove(name);
-        console.log("RMP-OSU: Cached data expired for " + name);
-        return { error: "Cached data expired" };
-    }
-    if (!outputValid(data)) {
-        chrome.storage.local.remove(name);
-        console.log("RMP-OSU: Invalid cached data for " + name);
-        return { error: "Invalid cached data" };
-    }
-    console.log("RMP-OSU: Found cached data for " + name);
-    return data;
-}
-
-function outputValid(data) {
-    if (!data) return false;
-    if (data.error) return false;
-    if (data.quality == null) return false;
-    return true;
-}
