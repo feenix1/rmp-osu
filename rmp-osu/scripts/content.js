@@ -111,7 +111,6 @@ async function getProfessorDataFor(professorName) {
         const professorNameStripped = professorName.toLowerCase().replace(/[.\s]+/g, '');
         console.log(`RMP-OSU: Comparing ${fullNameStripped} to ${professorNameStripped}`);
         if (fullNameStripped === professorNameStripped) {
-            console.log(`RMP-OSU: Found matching RMP data for ${professorName} with name ${teacher.firstName} ${teacher.lastName}`);
             const profData = new ProfessorData(
                 teacher.firstName,
                 teacher.lastName,
@@ -121,6 +120,7 @@ async function getProfessorDataFor(professorName) {
                 teacher.avgDifficulty,
                 teacher.legacyId
             );
+            console.log(`RMP-OSU: Found matching RMP data for ${professorName} with name ${teacher.firstName} ${teacher.lastName}`, profData);
             profDataCache[professorName] = profData;
             return profData;
         }
@@ -134,7 +134,7 @@ function createRatingElement(profData, fallbackName = null) {
     ratingEl.style.marginTop = "5px";
     ratingEl.style.fontSize = "14px";
     let text = "";
-    if (profData && profData.legacyId && profData.avgRating && profData.numRatings) {
+    if (profData != null && profData.legacyId != null && profData.avgRating != null && profData.numRatings != null) {
         text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} ratings)`;
         if (profData.numRatings == 1) {
             text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} rating)`;
