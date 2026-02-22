@@ -9,10 +9,6 @@
     "48": "images/48.png",
     "128": "images/128.png"
   },
-  "permissions": [
-    "offscreen",
-    "storage"
-  ],
   "host_permissions": [
       "https://www.ratemyprofessors.com/*"
   ],

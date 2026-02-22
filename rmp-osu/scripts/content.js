@@ -1,18 +1,188 @@
 profDataCache = {}
 
+class ProfessorData {
+    constructor(firstName, lastName, avgRating, numRatings, wouldTakeAgainPercent, avgDifficulty, legacyId) {
+        this.firstName = firstName;
+        this.lastName = lastName;
+        this.avgRating = avgRating.toPrecision(2);
+        this.numRatings = numRatings;
+        this.wouldTakeAgainPercent = wouldTakeAgainPercent;
+        this.avgDifficulty = avgDifficulty.toPrecision(2);
+        this.legacyId = legacyId;
+    }
+
+    getProfLink() {
+        if (this.legacyId) {
+            return `https://www.ratemyprofessors.com/professor/${this.legacyId}`;
+        }
+        else {
+            return null;
+        }
+    }
+
+    getFullName() {
+        if (!this.firstName || !this.lastName) {
+            return null;
+        }
+        return `${this.firstName} ${this.lastName}`;
+    }
+}
+
 function getProfessorDescriptionElement() {
     return document.querySelector(".instructor-detail");
 }
 
-// could be unperformant on large lists? use sparingly
-function getProfessorElementsInClassPreview() {
-    const results = document.querySelectorAll('[class^="result__link"]');
-    console.log("RMP-OSU: Found " + results.length + " class preview result elements.");
-    const instructorElements = Array.from(results).map(result => {
-        return result.querySelector('.result__flex--9.text--right');
+// // could be unperformant on large lists? use sparingly
+// function getProfessorElementsInClassPreview() {
+//     const results = document.querySelectorAll('[class^="result__link"]');
+//     console.log("RMP-OSU: Found " + results.length + " class preview result elements.");
+//     const instructorElements = Array.from(results).map(result => {
+//         return result.querySelector('.result__flex--9.text--right');
+//     });
+//     console.log(instructorElements);
+//     return instructorElements;
+// }
+
+
+async function getProfessorDataFor(professorName) {
+    if (profDataCache[professorName]) {
+        console.log("RMP-OSU: Returning cached data for " + professorName);
+        return profDataCache[professorName];
+    }
+    console.log("RMP-OSU: Requesting RMP data for " + professorName);
+    const gqlQuery = `
+        query NewSearch($query: TeacherSearchQuery!) {
+            newSearch {
+                teachers(
+                    query: $query,
+                    first: 5
+                ) {
+                    edges {
+                        node {
+                            avgDifficulty
+                            avgRating
+                            firstName
+                            lastName
+                            numRatings
+                            wouldTakeAgainPercent
+                            legacyId
+                        }
+                    }
+                }
+            }
+        }
+    `;
+    response = await chrome.runtime.sendMessage({
+        type: "fetchRequest",
+        method: "POST",
+        url: "https://www.ratemyprofessors.com/graphql",
+        headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            query: gqlQuery,
+            variables: {
+                query: {
+                    text: professorName,
+                    schoolID: "U2Nob29sLTc0Mg=="
+                }
+            }
+        })
+    })
+    if (!response.success) {
+        console.error("RMP-OSU: Failed to fetch RMP data for " + professorName + ": " + response.error);
+        return null;
+    }
+    const gqlResponse = JSON.parse(response.data);
+    if (gqlResponse.errors) {
+        console.error("RMP-OSU: GraphQL error while fetching RMP data for " + professorName + ": " + gqlResponse.errors.map(e => e.message).join(", "));
+        return null;
+    }
+    const teachers = gqlResponse.data.newSearch.teachers.edges;
+    if (teachers.length === 0) {
+        console.log("RMP-OSU: No RMP data found for " + professorName);
+        return null;
+    }
+    // TODO: Make amount of results to match configureable
+    for (let i = 0; i < teachers.length; i++) {
+        const teacher = teachers[i].node;
+        const fullNameStripped = `${teacher.firstName}${teacher.lastName}`.toLowerCase().replace(/[.\s]+/g, '');
+        const professorNameStripped = professorName.toLowerCase().replace(/[.\s]+/g, '');
+        console.log(`RMP-OSU: Comparing ${fullNameStripped} to ${professorNameStripped}`);
+        if (fullNameStripped === professorNameStripped) {
+            console.log(`RMP-OSU: Found matching RMP data for ${professorName} with name ${teacher.firstName} ${teacher.lastName}`);
+            const profData = new ProfessorData(
+                teacher.firstName,
+                teacher.lastName,
+                teacher.avgRating,
+                teacher.numRatings,
+                teacher.wouldTakeAgainPercent,
+                teacher.avgDifficulty,
+                teacher.legacyId
+            );
+            profDataCache[professorName] = profData;
+            return profData;
+        }
+    }
+    console.log("RMP-OSU: No matching RMP data found for " + professorName);
+    return null;
+}
+
+function createRatingElement(profData, fallbackName = null) {
+    const ratingEl = document.createElement("div");
+    ratingEl.style.marginTop = "5px";
+    ratingEl.style.fontSize = "14px";
+    let text = "";
+    if (profData && profData.legacyId && profData.avgRating && profData.numRatings) {
+        text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} ratings)`;
+        if (profData.numRatings == 1) {
+            text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} rating)`;
+        }
+        if (profData.numRatings == 0) {
+            text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a> (No ratings)`;
+        }        
+    }        
+    else {
+        console.log("RMP-OSU: No RMP data for " + fallbackName);
+        text = `<strong> ${fallbackName}</strong> (No RMP Data)`;
+    }
+    ratingEl.innerHTML = text;
+    return ratingEl;
+}
+
+async function addRMPToClassDescription() {
+    const instructorEl = getProfessorDescriptionElement();
+    if (!instructorEl || instructorEl.length === 0) return;
+    if (instructorEl.classList.contains("rmp-osu-injected")) return;
+    const instructorName = instructorEl.textContent?.trim();
+    if (instructorName == null) return;
+    console.log("RMP-OSU: Found instructor name:", instructorEl.textContent);
+    const profData = await getProfessorDataFor(instructorName);
+    instructorEl.textContent = "";
+    instructorEl.classList.add("rmp-osu-injected");
+    const ratingEl = createRatingElement(profData, instructorName);
+    instructorEl.appendChild(ratingEl);
+}
+
+async function getInstructorForCRN(crn) {
+    const response = await chrome.runtime.sendMessage({
+        type: "fetchRequest",
+        method: "POST",
+        url: "https://classes.oregonstate.edu/api/?page=fose&route=details",
+        headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+            "Content-Type": "application/json",
+            "Host": "classes.oregonstate.edu",
+        },
+        body: `{"key": "crn:${crn}"}`
     });
-    console.log(instructorElements);
-    return instructorElements;
+    const parsed = JSON.parse(response);
+    const tempDiv = document.createElement("div");
+    tempDiv.style.display = "none";
+    tempDiv.innerHTML = parsed.instructordetail_html;
+    const instructorName = tempDiv.textContent.trim();
+    return instructorName;
 }
 
 function getSectionTitleRow() {
@@ -28,45 +198,22 @@ function getSectionListElements() {
     return sections;
 }
 
-async function getProfDataFor(profName) {
-    console.log("RMP-OSU: Requesting RMP data for " + profName);
-    return await chrome.runtime.sendMessage({
-        type: "fetchRating",
-        name: profName,
-    })
+async function getSectionDataFor(className) {
+    const response = await chrome.runtime.sendMessage({
+        type: "fetchRequest",
+        method: "POST",
+        url: "https://classes.oregonstate.edu/api/?page=fose&route=details",
+        headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+            "Content-Type": "application/json",
+            "Host": "classes.oregonstate.edu",
+        },
+        body: `{"group": "code:${className}"}`
+    });
+    const parsed = JSON.parse(response);
+    return parsed.allInGroup;
 }
 
-async function addRMPToClassDescription() {
-    const instructorEl = getProfessorDescriptionElement();
-    if (!instructorEl || instructorEl.length === 0) return;
-    if (instructorEl.classList.contains("rmp-osu-injected")) return;
-    const instructorName = instructorEl.textContent?.trim();
-    console.log("RMP-OSU: Found instructor name:", instructorEl.textContent);
-    if (instructorName == null) return;
-    const response = await getProfDataFor(instructorName);
-    console.log("RMP data for " + instructorName + ": ", response);
-    instructorEl.textContent = "";
-    const ratingEl = document.createElement("div");
-    ratingEl.style.marginTop = "5px";
-    ratingEl.style.fontSize = "14px";
-    let text = "";
-    if (response.profLink && response.quality && response.numRatings) {
-        text = `<a href="https://www.ratemyprofessors.com${response.profLink}" target="_blank"><strong>${instructorName}</strong></a>  ${response.quality}⭐ (${response.numRatings} ratings)`;
-        if (response.numRatings == 1) {
-            text = `<a href="https://www.ratemyprofessors.com${response.profLink}" target="_blank"><strong>${instructorName}</strong></a>  ${response.quality}⭐ (${response.numRatings} rating)`;
-        }
-    }        
-    else {
-        console.log("RMP-OSU: No RMP data for " + instructorName);
-        text = `<strong> ${instructorName}</strong> (No RMP Data)`;
-    }
-    if (response.numRatings == 0) {
-        text = `<a href="https://www.ratemyprofessors.com${response.profLink}" target="_blank"><strong>${instructorName}</strong></a> (No ratings)`;
-    }        
-    ratingEl.innerHTML = text;
-    instructorEl.classList.add("rmp-osu-injected");
-    instructorEl.appendChild(ratingEl);
-}
 
 function createSectionTitleElement(title) {
     //<div role="columnheader" scope="col">Actual Enrl</div>
@@ -96,14 +243,6 @@ function getSectionCRN(sectionElement) {
     return text.trim();
 }
 
-async function getInstructorForCRN(crn) {
-    const name = await chrome.runtime.sendMessage({
-        type: "getNameFromCRN",
-        crn: crn,
-    })
-    return name;
-}
-
 async function addRMPToSections() {
     const sectionTitles = getSectionTitleRow();
     if (sectionTitles != null) {
@@ -121,10 +260,21 @@ async function addRMPToSections() {
         section.classList.add("rmp-osu-injected");
         const crn = getSectionCRN(section);
         const instructor = await getInstructorForCRN(crn);
-        const instructorValue = createSectionColValue("instructor", instructor);
-        section.append(instructorValue);
-        const ratingValue = createSectionColValue("rating", "placeholder");
-        section.append(ratingValue);
+        const profData = await getProfessorDataFor(instructor);
+        if (profData) {
+            console.log(`Got RMP data for section ${crn}:`, profData);
+            const instructorValue = createSectionColValue("instructor", `<a href="${profData.getProfLink()}">${profData.getFullName()}</a> ${profData.avgRating}⭐`);
+            const ratingValue = createSectionColValue("rating", `${profData.numRatings} ratings`);
+            section.append(instructorValue);
+            section.append(ratingValue);
+        }
+        else {
+            console.log(`No RMP data for section ${crn} with instructor ${instructor}`);
+            const instructorValue = createSectionColValue("instructor", instructor);
+            const ratingValue = createSectionColValue("rating", `N/A`);
+            section.append(instructorValue);
+            section.append(ratingValue);
+        }
     }
 }
 
