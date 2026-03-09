@@ -47,6 +47,10 @@ function getProfessorDescriptionElement() {
 
 
 async function getProfessorDataFor(professorName) {
+    if (professorName == null || professorName.trim() === "") {
+        console.log("RMP-OSU: No professor name provided");
+        return null;
+    }
     if (profDataCache[professorName]) {
         console.log("RMP-OSU: Returning cached data for " + professorName);
         return profDataCache[professorName];
@@ -74,7 +78,7 @@ async function getProfessorDataFor(professorName) {
             }
         }
     `;
-    response = await chrome.runtime.sendMessage({
+    const response = await chrome.runtime.sendMessage({
         type: "fetchRequest",
         method: "POST",
         url: "https://www.ratemyprofessors.com/graphql",
@@ -270,36 +274,37 @@ async function addRMPToSections() {
         section.classList.add("rmp-osu-injected");
         const crn = getSectionCRN(section);
         const instructor = await getInstructorForCRN(crn);
-        const profData = await getProfessorDataFor(instructor);
-        if (profData != null) {
-            console.log(`Got RMP data for section ${crn}:`, profData);
-            const instructorValue = createSectionColValueElement("instructor");
-            const link = document.createElement("a");
-            link.href = profData.getProfLink();
-            link.target = "_blank";
-            if (profData.numRatings == 0) {
-                link.textContent = `${profData.getFullName()} (N/A)`;
+        if (instructor != null && instructor.trim() !== "") {
+            const profData = await getProfessorDataFor(instructor);
+            if (profData != null) {
+                console.log(`Got RMP data for section ${crn}:`, profData);
+                const instructorValue = createSectionColValueElement("instructor");
+                const link = document.createElement("a");
+                link.href = profData.getProfLink();
+                link.target = "_blank";
+                if (profData.numRatings == 0) {
+                    link.textContent = `${profData.getFullName()} (N/A)`;
+                }
+                else {
+                    link.textContent = `${profData.getFullName()} ${profData.avgRating}⭐`;
+                }
+                instructorValue.appendChild(link);
+                const ratingValue = createSectionColValueElement("rating");
+                ratingValue.textContent = `${profData.numRatings}`;
+                section.append(instructorValue);
+                section.append(ratingValue);
+                continue
             }
-            else {
-                link.textContent = `${profData.getFullName()} ${profData.avgRating}⭐`;
-            }
-            instructorValue.appendChild(link);
-            const ratingValue = createSectionColValueElement("rating");
-            ratingValue.textContent = `${profData.numRatings}`;
-            section.append(instructorValue);
-            section.append(ratingValue);
         }
-        else {
-            console.log(`No RMP data for section ${crn} with instructor ${instructor}`);
-            const instructorValue = createSectionColValueElement("instructor");
-            const link = document.createElement("p");
-            link.textContent = `${instructor} (N/A)`;
-            instructorValue.appendChild(link);
-            const ratingValue = createSectionColValueElement("rating");
-            ratingValue.textContent = `N/A`;
-            section.append(instructorValue);
-            section.append(ratingValue);
-        }
+        console.log(`No RMP data for section ${crn} with instructor ${instructor}`);
+        const instructorValue = createSectionColValueElement("instructor");
+        const link = document.createElement("p");
+        link.textContent = `${instructor} (N/A)`;
+        instructorValue.appendChild(link);
+        const ratingValue = createSectionColValueElement("rating");
+        ratingValue.textContent = `N/A`;
+        section.append(instructorValue);
+        section.append(ratingValue);
     }
 }
 
