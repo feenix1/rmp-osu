@@ -224,7 +224,7 @@ async function getSectionDataFor(className) {
         },
         body: `{"group": "code:${className}"}`
     });
-    const parsed = JSON.parse(response);
+    const parsed = JSON.parse(response.body);
     classNameToSectionDataCache[className] = parsed;
     return parsed.allInGroup;
 }
@@ -248,6 +248,10 @@ function createSectionColValueElement(title) {
 
 function getSectionCRN(sectionElement) {
     const crnElement = sectionElement.querySelector(".course-section-crn");
+    if (!crnElement) {
+        console.warn("RMP-OSU: Failed to find CRN element in section", sectionElement);
+        return null;
+    }
     let text = ""
     crnElement.childNodes.forEach(node => {
         if (node.nodeType === Node.TEXT_NODE) {
@@ -267,7 +271,7 @@ async function addRMPToSections() {
         }
     }
     const sections=  document.querySelectorAll(".course-section")
-    console.log(`Found ${sections.length} section entries`)
+    console.log(`RMP-OSU: Found ${sections.length} section entries`)
     for (i = 0; i < sections.length; i++) {
         const section = sections[i];
         if (section.classList.contains("rmp-osu-injected")) continue;
@@ -277,13 +281,13 @@ async function addRMPToSections() {
         if (instructor != null && instructor.trim() !== "") {
             const profData = await getProfessorDataFor(instructor);
             if (profData != null) {
-                console.log(`Got RMP data for section ${crn}:`, profData);
+                console.log(`RMP-OSU: Got RMP data for section ${crn}:`, profData);
                 const instructorValue = createSectionColValueElement("instructor");
                 const link = document.createElement("a");
                 link.href = profData.getProfLink();
                 link.target = "_blank";
                 if (profData.numRatings == 0) {
-                    link.textContent = `${profData.getFullName()} (N/A)`;
+                    link.textContent = `${profData.getFullName()} (No ratings)`;
                 }
                 else {
                     link.textContent = `${profData.getFullName()} ${profData.avgRating}⭐`;
@@ -296,10 +300,15 @@ async function addRMPToSections() {
                 continue
             }
         }
-        console.log(`No RMP data for section ${crn} with instructor ${instructor}`);
+        console.log(`RMP-OSU: No RMP data for section ${crn} with instructor ${instructor}`);
         const instructorValue = createSectionColValueElement("instructor");
         const link = document.createElement("p");
-        link.textContent = `${instructor} (N/A)`;
+        if (instructor == null || instructor.trim() === "") {
+            link.textContent = `(N/A)`;
+        }
+        else {
+            link.textContent = `${instructor} (Not in RMP)`;
+        }
         instructorValue.appendChild(link);
         const ratingValue = createSectionColValueElement("rating");
         ratingValue.textContent = `N/A`;
@@ -313,10 +322,20 @@ function sleep(ms) {
 }
 
 async function main() {
+    let backoffMs = 1000;
+    const maxBackoffMs = 10000;
     while (true) {
-        await addRMPToClassDescription();
-        await addRMPToSections();
-        await sleep(1000);
+        try {
+            await addRMPToClassDescription();
+            await addRMPToSections();
+            backoffMs = 1000;
+            await sleep(1000);
+        }
+        catch (error) {
+            console.error("RMP-OSU: main loop error, backing off. Please report this on github.", error);
+            await sleep(backoffMs);
+            backoffMs = Math.min(backoffMs * 2, maxBackoffMs);
+        }
     }
 }
 
