@@ -247,6 +247,12 @@ function createSectionColValueElement(title) {
 }
 
 function getSectionCRN(sectionElement) {
+    const crnData = sectionElement.getAttribute("data-key").split(":")[1];
+    if (crnData) {
+        console.log("RMP-OSU: Found CRN in data-key attribute:", crnData);
+        return crnData;
+    }
+    console.warn("RMP-OSU: CRN not found in data-key, falling back to query selector", sectionElement);
     const crnElement = sectionElement.querySelector(".course-section-crn");
     if (!crnElement) {
         console.warn("RMP-OSU: Failed to find CRN element in section", sectionElement);
