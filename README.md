@@ -17,3 +17,10 @@ Works automatically. Just navigate to [classes.oregonstate.edu](https://classes.
 I haven't tested the performance impact, but it shouldn't be much.
 
 <sup><sub>*Positive tends to be more reliable than negative</sub></sup>
+
+# Development Guide
+
+`automation.py` is called through npm commands and can do various things that aid development.
+
+- `switch [chrome|firefox] - Changes which manifest is used as manifest.json`
+- `version 

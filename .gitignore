@@ -1,3 +1,4 @@
 /node_modules/
 rmp-osu/web-ext-artifacts/**
 rmp-osu.pem
+.amo-upload-uuid
