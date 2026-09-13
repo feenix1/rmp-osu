@@ -5,6 +5,7 @@
     "graphql": "^16.12.0"
   },
   "scripts": {
+    "automation": ".\\tools\\.venv\\Scripts\\python .\\tools\\automation.py",
     "switchchrome": ".\\tools\\.venv\\Scripts\\python .\\tools\\automation.py switch chrome",
     "switchfirefox": ".\\tools\\.venv\\Scripts\\python .\\tools\\automation.py switch firefox"
   }
