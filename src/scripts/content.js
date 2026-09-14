@@ -1,3 +1,82 @@
+// ===================================================
+// Name Matching
+// ===================================================
+
+// Tables and suffixes from https://github.com/craj/name-match/blob/main/src/name-normalizer.js
+const PREFIXES = ['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'rev', 'hon'];
+const SUFFIXES = ['jr', 'sr', 'ii', 'iii', 'iv', 'v', 'md', 'phd', 'esq'];
+const NAME_TO_ALIAS = {
+  'william': ['will', 'bill', 'billy', 'willy', 'willie'],
+  'robert': ['rob', 'bob', 'bobby', 'robbie'],
+  'richard': ['rick', 'dick', 'richie', 'ricky'],
+  'michael': ['mike', 'mikey', 'mick'],
+  'james': ['jim', 'jimmy', 'jamie'],
+  'joseph': ['joe', 'joey', 'jo'],
+  'thomas': ['tom', 'tommy'],
+  'christopher': ['chris', 'topher'],
+  'charles': ['chuck', 'charlie', 'chas'],
+  'daniel': ['dan', 'danny'],
+  'matthew': ['matt', 'matty'],
+  'anthony': ['tony', 'ant'],
+  'steven': ['steve', 'stevie'],
+  'kenneth': ['ken', 'kenny'],
+  'edward': ['ed', 'eddie', 'ted', 'teddy'],
+  'donald': ['don', 'donny'],
+  'elizabeth': ['liz', 'lizzy', 'beth', 'betty', 'eli'],
+  'jennifer': ['jen', 'jenny'],
+  'katherine': ['kathy', 'kate', 'katie', 'katy'],
+  'margaret': ['maggie', 'meg', 'megan', 'peggy'],
+  'patricia': ['pat', 'patty', 'trish'],
+  'deborah': ['deb', 'debbie'],
+  'jessica': ['jess', 'jessie'],
+  'sandra': ['sandy'],
+  'barbara': ['barb', 'barbie'],
+  'stephanie': ['steph', 'stephy'],
+  'victoria': ['vicky', 'tori'],
+  'jonathan': ['jon', 'jonny'],
+  'nicholas': ['nick', 'nicky'],
+  'jeffrey': ['jeff'],
+  'benjamin': ['ben', 'benny'],
+  'timothy': ['tim', 'timmy'],
+  'gregory': ['greg', 'gregg'],
+  'raymond': ['ray'],
+  'samuel': ['sam', 'sammy'],
+  'andrew': ['andy', 'drew'],
+  'alexander': ['alex', 'al'],
+  'david': ['dave', 'davey'],
+  'joshua': ['josh']
+};
+
+const ALIAS_TO_NAME = {};
+for (const [name, aliases] of Object.entries(NAME_TO_ALIAS)) {
+  for (const alias of aliases) {
+    if (!ALIAS_TO_NAME[alias]) {
+      ALIAS_TO_NAME[alias] = [];
+    }
+    ALIAS_TO_NAME[alias].push(name);
+  }
+}
+
+class Name {
+    constructor(prefix, firstName, middleName, lastName, suffix) {
+        this.prefix = prefix;
+        this.firstName = firstName;
+        this.middleName = middleName;
+        this.lastName = lastName;
+        this.suffix = suffix;
+    }
+}
+
+function normalizeName(name) {
+  if (!name) return null;
+
+
+}
+
+// ===================================================
+// Content Script
+// ===================================================
+
 profDataCache = {}
 crnToInstructorCache = {}
 classNameToSectionDataCache = {}
@@ -97,17 +176,17 @@ async function getProfessorDataFor(professorName) {
         })
     })
     if (!response.success) {
-        console.error("RMP-OSU: Failed to fetch RMP data for " + professorName + ": " + response.error);
+        console.error("RMP-OSU: Failed to get a response for " + professorName + ": " + response.error);
         return null;
     }
     const gqlResponse = JSON.parse(response.data);
     if (gqlResponse.errors) {
-        console.error("RMP-OSU: GraphQL error while fetching RMP data for " + professorName + ": " + gqlResponse.errors.map(e => e.message).join(", "));
+        console.error("RMP-OSU: GraphQL error(s) found in JSON response while fetching RMP data for " + professorName + ": " + gqlResponse.errors.map(e => e.message).join(", "));
         return null;
     }
     const teachers = gqlResponse.data.newSearch.teachers.edges;
     if (teachers.length === 0) {
-        console.log("RMP-OSU: No RMP data found for " + professorName);
+        console.log("RMP-OSU: No teachers found in GraphQL query for " + professorName);
         return null;
     }
     // TODO: Make amount of results to match configureable
@@ -161,8 +240,8 @@ async function addRMPToClassDescription() {
     const instructorEl = getProfessorDescriptionElement();
     if (!instructorEl || instructorEl.length === 0) return;
     if (instructorEl.classList.contains("rmp-osu-injected")) return;
-    const instructorName = instructorEl.textContent?.trim();
-    if (instructorName == null) return;
+    const instructorName = instructorEl.textContent.trim();
+    if (instructorName == "") return;
     console.log("RMP-OSU: Found instructor name:", instructorEl.textContent);
     const profData = await getProfessorDataFor(instructorName);
     instructorEl.textContent = "";
