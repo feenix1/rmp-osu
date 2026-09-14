@@ -14,6 +14,6 @@ Create an issue for any feature requests and bugs!
 ## Performance
 I haven't tested the performance impact, but it shouldn't be much.
 
-# Development Guide
+## Development
 
 `automation.py` is called through npm commands and can do various things that aid development. Try `npm run automation`!
