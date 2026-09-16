@@ -47,31 +47,153 @@ const NAME_TO_ALIAS = {
   'joshua': ['josh']
 };
 
+// reverse lookup
 const ALIAS_TO_NAME = {};
 for (const [name, aliases] of Object.entries(NAME_TO_ALIAS)) {
-  for (const alias of aliases) {
-    if (!ALIAS_TO_NAME[alias]) {
-      ALIAS_TO_NAME[alias] = [];
+    for (const alias of aliases) {
+        if (!ALIAS_TO_NAME[alias]) {
+            ALIAS_TO_NAME[alias] = [];
+        }
+        ALIAS_TO_NAME[alias].push(name);
     }
-    ALIAS_TO_NAME[alias].push(name);
-  }
+}
+
+// Mostly going to try equating these kinds of cases:
+// - "Dr. John Smith" vs "John Smith"
+// - "John Smith" vs "John A. Smith"
+// - "John Smith" vs "John Smith Jr."
+// - "John Smith" vs "John Smith-Henry"
+// - "John Henry" vs "John Smith-Henry"
+// - "John Henry-Smith" vs "John Smith-Henry"
+// - "Alexander Smith" vs "Alex Smith"
+// - "André Smith" vs "Andre Smith"
+// and typos
+
+// TODO: finish this
+function jaroWinklerDistance(s1, s2) {
+    if (s1 === s2) return 1.0;
+    if (!s1 || !s2) return 0.0;
+
 }
 
 class Name {
-    constructor(prefix, firstName, middleName, lastName, suffix) {
-        this.prefix = prefix;
-        this.firstName = firstName;
-        this.middleName = middleName;
-        this.lastName = lastName;
-        this.suffix = suffix;
+    // TODO: make constructor gracefully fail if it can't parse name pieces
+    constructor(nameString) {
+        // names are all lowercase, trimmed, with basic variation in name table 
+        // and get rid of punctuation and make accents closest ascii.
+        // tbh scheduler and rmp might not support non-ascii names but just in case
+
+        // init everything null
+        this.prefix = null;
+        this.firstName = null;
+        this.lastName1 = null;
+        this.lastName2 = null;
+        this.suffix = null;
+        if (!nameString) {
+            console.warn("RMP-OSU: Name constructor called with null or empty string.");
+            return;
+        }
+
+        // lower and trim
+        nameString = nameString.toLowerCase();
+        nameString = nameString.trim();
+        // remove accents and punctuation
+        nameString = Name.removeAccents(nameString);
+
+        // extract prefix, remove it
+        this.prefix = Name.extractPrefix(nameString);
+        if (this.prefix) {
+            nameString = nameString.replace(this.prefix, "").trim();
+        }
+        if (nameString.trim() === "") {
+            console.warn("RMP-OSU: Name constructor called with name string that only contains a prefix.");
+            return
+        }
+
+        // in the case of non defined prefix its kinda over
+        this.firstName = Name.getBasicFirstName(nameString.split(' ')[0]);
+        nameString = nameString.replace(this.firstName, "").trim();
+        if (nameString === "") {
+            console.warn("RMP-OSU: Name constructor called with name string that contains nothing past first name.");
+            return
+        }
+
+        if (!nameString.includes('-')) {
+            // non-hyphenated
+            const lastNames = nameString.split(' ');
+            this.lastName1 = lastNames[0].trim();
+            if (lastNames.length > 1) {
+                this.lastName2 = lastNames[1].trim();
+            }
+        }
+        else {
+            // hyphenated
+            const lastNames = nameString.split('-');
+            this.lastName1 = lastNames[0].trim();
+            if (lastNames.length > 1) {
+                this.lastName2 = lastNames[1].trim();
+            }
+            else {
+                console.warn("RMP-OSU: Name constructor called with name string that contains a hyphen but no second last name.");
+            }
+        }
+
+        this.suffix = Name.extractSuffix(nameString);
+    }
+    similarTo(otherName) {
+        if (!otherName) return false;
+        if (this.firstName !== otherName.firstName) return false;
+
+    }
+    static removeAccents(nameString) {
+        if (!nameString) return null;
+        nameString = nameString.replace(/á|à|â|ã|ä/g, 'a');
+        nameString = nameString.replace(/é|è|ê|ë/g, 'e');
+        nameString = nameString.replace(/í|ì|î|ï/g, 'i');
+        nameString = nameString.replace(/ó|ò|ô|õ|ö/g, 'o');
+        nameString = nameString.replace(/ú|ù|û|ü/g, 'u');
+        nameString = nameString.replace(/ç/g, 'c');
+        nameString = nameString.replace(/ñ/g, 'n');
+        nameString = nameString.replace(/[^a-z\s]/g, '');
+        return nameString;
+    }
+    static extractPrefix(nameString) {
+        if (!nameString) return null;
+        const prefix = nameString.split(' ')[0];
+        if (PREFIXES.includes(prefix.toLowerCase())) {
+            return prefix;
+        }
+        return null;
+    }
+    static extractSuffix(nameString) {
+        if (!nameString) return null;
+        const parts = nameString.split(' ');
+        if (parts.length === 0) return null;
+        const suffix = parts[parts.length - 1];
+        if (SUFFIXES.includes(suffix.toLowerCase())) {
+            return suffix;
+        }
+        return null;
+    }
+    static getBasicFirstName(firstName) {
+        if (!firstName) return null;
+        if (ALIAS_TO_NAME.hasOwnProperty(firstName.toLowerCase())) {
+            return ALIAS_TO_NAME[firstName.toLowerCase()][0];
+        }
+        return firstName;
+    }
+    getFullName() {
+        const parts = [];
+        if (this.prefix) parts.push(this.prefix);
+        if (this.firstName) parts.push(this.firstName);
+        if (this.middleName) parts.push(this.middleName);
+        if (this.lastName1) parts.push(this.lastName1);
+        if (this.lastName2) parts.push(this.lastName2);
+        if (this.suffix) parts.push(this.suffix);
+        return parts.join(' ');
     }
 }
 
-function normalizeName(name) {
-  if (!name) return null;
-
-
-}
 
 // ===================================================
 // Content Script
@@ -82,16 +204,14 @@ crnToInstructorCache = {}
 classNameToSectionDataCache = {}
 
 class ProfessorData {
-    constructor(firstName, lastName, avgRating, numRatings, wouldTakeAgainPercent, avgDifficulty, legacyId) {
-        this.firstName = firstName;
-        this.lastName = lastName;
+    constructor(name, avgRating, numRatings, wouldTakeAgainPercent, avgDifficulty, legacyId) {
+        this.name = name;
         this.avgRating = avgRating.toPrecision(2);
         this.numRatings = numRatings;
         this.wouldTakeAgainPercent = wouldTakeAgainPercent;
         this.avgDifficulty = avgDifficulty.toPrecision(2);
         this.legacyId = legacyId;
     }
-
     getProfLink() {
         if (this.legacyId) {
             return `https://www.ratemyprofessors.com/professor/${this.legacyId}`;
@@ -100,12 +220,11 @@ class ProfessorData {
             return null;
         }
     }
-
     getFullName() {
-        if (!this.firstName || !this.lastName) {
+        if (!this.name) {
             return null;
         }
-        return `${this.firstName} ${this.lastName}`;
+        return this.name;
     }
 }
 
