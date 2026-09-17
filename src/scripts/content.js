@@ -58,21 +58,12 @@ for (const [name, aliases] of Object.entries(NAME_TO_ALIAS)) {
     }
 }
 
-// Mostly going to try equating these kinds of cases:
-// - "Dr. John Smith" vs "John Smith"
-// - "John Smith" vs "John A. Smith"
-// - "John Smith" vs "John Smith Jr."
-// - "John Smith" vs "John Smith-Henry"
-// - "John Henry" vs "John Smith-Henry"
-// - "John Henry-Smith" vs "John Smith-Henry"
-// - "Alexander Smith" vs "Alex Smith"
-// - "André Smith" vs "Andre Smith"
-// and typos
 
-// TODO: finish this
-function jaroWinklerDistance(s1, s2) {
+function jaroWinklerSimilarity(s1, s2) {
     if (s1 === s2) return 1.0;
     if (!s1 || !s2) return 0.0;
+    let len1 = s1.length;
+    let len2 = s2.length;
 
 }
 
@@ -140,9 +131,29 @@ class Name {
 
         this.suffix = Name.extractSuffix(nameString);
     }
+
+    /**
+     * Check if the name is valid, should always check after construction.
+     * @returns True if firstName and lastName1 are not null.
+     */
+    valid() {
+        return this.firstName != null && this.lastName1 != null;
+    }
+
+    // Mostly going to try equating these kinds of cases:
+    // - "Dr. John Smith" vs "John Smith"
+    // - "John Smith" vs "John A. Smith"
+    // - "John Smith" vs "John Smith Jr."
+    // - "John Smith" vs "John Smith-Henry"
+    // - "John Henry" vs "John Smith-Henry"
+    // - "John Henry-Smith" vs "John Smith-Henry"
+    // - "Alexander Smith" vs "Alex Smith"
+    // - "André Smith" vs "Andre Smith"
+    // and typos
     similarTo(otherName) {
         if (!otherName) return false;
         if (this.firstName !== otherName.firstName) return false;
+        // TODO: finish with jw similarity threshold + 
 
     }
     static removeAccents(nameString) {
