@@ -2,6 +2,37 @@
 // Name Matching
 // ===================================================
 
+const TEST_NAME_MATCHING = false;
+const nameMatchTests = [
+  { a: "Dr. John Smith",          b: "John Smith",          expected: true,  note: "prefix removed" },
+  { a: "John A. Smith",           b: "John Smith",          expected: true,  note: "middle initial ignored" },
+  { a: "John Smith Jr.",          b: "John Smith",          expected: true,  note: "suffix ignored" },
+  { a: "John Smith-Henry",        b: "John Smith Henry",    expected: true,  note: "hyphenation/spacing" },
+  { a: "John Henry-Smith",        b: "John Smith-Henry",    expected: true,  note: "compound last-name reorder" },
+  { a: "Alexander Smith",         b: "Alex Smith",          expected: true,  note: "nickname/alias" },
+  { a: "André Lefèvre",           b: "Andre Lefevre",       expected: true,  note: "diacritics normalized" },
+  { a: "Jonathan",                b: "Jonatahn",            expected: true,  note: "minor transposition/typo" },
+  { a: "Michael",                 b: "Mike",                expected: true,  note: "minor transposition/typo" },
+  { a: "John Smith",              b: "Jane Smith",          expected: false, note: "different given name" },
+  { a: "John Smith",              b: "John Smythe",         expected: false, note: "different family name" },
+  { a: "J. Smith",                b: "John A. Smith",       expected: false, note: "initials ambiguous" },
+  { a: "Dr",                      b: "John",                expected: false, note: "only prefix / insufficient" },
+  { a: "",                        b: "John Smith",          expected: false, note: "empty input" },
+  { a: "Alice Johnson",           b: "Robert Brown",        expected: false, note: "completely different" }
+];
+
+if (TEST_NAME_MATCHING) {
+    console.log("RMP-OSU: Running name matching tests...");
+    for (const test of nameMatchTests) {
+        const nameA = new Name(test.a);
+        const nameB = new Name(test.b);
+        const result = nameA.similarTo(nameB);
+        console.log(`RMP-OSU: ${test.a} parsed as`, nameA);
+        console.log(`RMP-OSU: ${test.b} parsed as`, nameB);
+        console.log(`RMP-OSU: Similarity between ${test.a} and ${test.b}: ${result}`);
+    }
+}
+
 // Tables and suffixes from https://github.com/craj/name-match/blob/main/src/name-normalizer.js
 const PREFIXES = ['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'rev', 'hon'];
 const SUFFIXES = ['jr', 'sr', 'ii', 'iii', 'iv', 'v', 'md', 'phd', 'esq'];
@@ -60,11 +91,62 @@ for (const [name, aliases] of Object.entries(NAME_TO_ALIAS)) {
 
 
 function jaroWinklerSimilarity(s1, s2) {
+    const PREFIX_SCALE = 0.1; // scaling factor for common prefix
+    const PREFIX_LENGTH = 4; // maximum prefix length to consider
+    const JW_THRESHOLD = 0.7; // threshold for applying the prefix adjustment
+
     if (s1 === s2) return 1.0;
     if (!s1 || !s2) return 0.0;
-    let len1 = s1.length;
-    let len2 = s2.length;
+    const len1 = s1.length;
+    const len2 = s2.length;
+    const maxDist = Math.max(0, Math.floor(Math.max(len1, len2) / 2) - 1);
+    let matches = 0;
+    const hash1 = new Array(len1).fill(false);
+    const hash2 = new Array(len2).fill(false);
+    for (let i = 0; i < len1; i++) {
+        const start = Math.max(0, i - maxDist);
+        const end = Math.min(i + maxDist + 1, len2);
+        for (let j = start; j < end; j++) {
+            if (hash2[j]) continue;
+            if (s1[i] === s2[j]) {
+                hash1[i] = true;
+                hash2[j] = true;
+                matches++;
+                break;
+            }
+        }
+    }
+    if (matches === 0) return 0.0;
+    let transpositions = 0;
+    let ptr = 0;
+    for (let i = 0; i < len1; i++) {
+        if (!hash1[i]) continue;
+        while (!hash2[ptr] && ptr < len2) {
+            ptr++;
+        }
+        if (s1[i] !== s2[ptr]) {
+            transpositions++;
+        }
+        ptr++;
+    }
+    transpositions /= 2;
 
+    const jaro = (matches / len1 + matches / len2 + (matches - transpositions) / matches) / 3.0;
+
+    const prefixLength = Math.min(PREFIX_LENGTH, Math.min(s1.length, s2.length));
+    let prefix = 0;
+    for (let i = 0; i < prefixLength; i++) {
+        if (s1[i] === s2[i]) {
+            prefix++;
+        } else {
+            break;
+        }
+    }
+    
+    if (jaro < JW_THRESHOLD) {
+        return jaro;
+    }
+    return Math.min(1.0, jaro + PREFIX_SCALE * prefix * (1 - jaro));
 }
 
 class Name {
@@ -153,8 +235,8 @@ class Name {
     similarTo(otherName) {
         if (!otherName) return false;
         if (this.firstName !== otherName.firstName) return false;
-        // TODO: finish with jw similarity threshold + 
-
+        // TODO: add better matching, wip for parsing test
+        return true;
     }
     static removeAccents(nameString) {
         if (!nameString) return null;
