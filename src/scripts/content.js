@@ -2,7 +2,7 @@
 // Name Matching
 // ===================================================
 
-const TEST_NAME_MATCHING = false;
+const TEST_NAME_MATCHING = true; // REMEMBER TO SET TO FALSE BEFORE BUILDING
 const nameMatchTests = [
   { a: "Dr. John Smith",          b: "John Smith",          expected: true,  note: "prefix removed" },
   { a: "John A. Smith",           b: "John Smith",          expected: true,  note: "middle initial ignored" },
@@ -26,18 +26,6 @@ const nameMatchTests = [
   { a: "Dr. First M. Last",          b: "First Last",           expected: true,  note: "prefix removed, middle initial ignored" },
   { a: "Dr. First M. Last",          b: "First Middle Last",    expected: true,  note: "prefix removed, middle name ignored" },
 ];
-
-if (TEST_NAME_MATCHING) {
-    console.log("RMP-OSU: Running name matching tests...");
-    for (const test of nameMatchTests) {
-        const nameA = new Name(test.a);
-        const nameB = new Name(test.b);
-        const result = nameA.similarTo(nameB);
-        console.log(`RMP-OSU: ${test.a} parsed as`, nameA);
-        console.log(`RMP-OSU: ${test.b} parsed as`, nameB);
-        console.log(`RMP-OSU: Similarity between ${test.a} and ${test.b}: ${result}`);
-    }
-}
 
 // Tables and suffixes from https://github.com/craj/name-match/blob/main/src/name-normalizer.js
 const PREFIXES = ['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'rev', 'hon'];
@@ -281,7 +269,7 @@ class Name {
         }
         return firstName;
     }
-    getFullName() {
+    toString() {
         const parts = [];
         if (this.prefix) parts.push(this.prefix);
         if (this.firstName) parts.push(this.firstName);
@@ -293,6 +281,17 @@ class Name {
     }
 }
 
+if (TEST_NAME_MATCHING) {
+    console.log("RMP-OSU: Running name matching tests...");
+    for (const test of nameMatchTests) {
+        const nameA = new Name(test.a);
+        const nameB = new Name(test.b);
+        const result = nameA.similarTo(nameB);
+        console.log(`RMP-OSU: ${test.a} parsed as`, nameA);
+        console.log(`RMP-OSU: ${test.b} parsed as`, nameB);
+        console.log(`RMP-OSU: Similarity between ${test.a} and ${test.b}: ${result}`);
+    }
+}
 
 // ===================================================
 // Content Script
@@ -323,7 +322,7 @@ class ProfessorData {
         if (!this.name) {
             return null;
         }
-        return this.name;
+        return this.name.toString();
     }
 }
 
@@ -415,8 +414,7 @@ async function getProfessorDataFor(professorName) {
         console.log(`RMP-OSU: Comparing ${fullNameStripped} to ${professorNameStripped}`);
         if (fullNameStripped === professorNameStripped) {
             const profData = new ProfessorData(
-                teacher.firstName,
-                teacher.lastName,
+                new Name(`${teacher.firstName} ${teacher.lastName}`),
                 teacher.avgRating,
                 teacher.numRatings,
                 teacher.wouldTakeAgainPercent,
