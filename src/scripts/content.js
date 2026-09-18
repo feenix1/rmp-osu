@@ -22,9 +22,9 @@ const nameMatchTests = [
   { a: "Dr. Emily Davis",          b: "Emily Davis",         expected: true,  note: "prefix removed" },
   { a: "Dr. Emily Davis",          b: "Dr. Emily Davis",     expected: true,  note: "same name with prefix" },
   { a: "Emily Davis",              b: "Emily Davis",         expected: true,  note: "same name without prefix" },
-  { a: "Dr. First M. Last",          b: "First M. Last",       expected: true,  note: "prefix removed, middle initial kept" },
-  { a: "Dr. First M. Last",          b: "First Last",           expected: true,  note: "prefix removed, middle initial ignored" },
-  { a: "Dr. First M. Last",          b: "First Middle Last",    expected: true,  note: "prefix removed, middle name ignored" },
+  { a: "Jaques St Pierre",          b: "Jacques St Pierre",   expected: true,  note: "minor typo in given name" },
+  { a: "Jaques St Pierre",          b: "Jaques StPierre",   expected: true,  note: "splitting of compound last name" },
+  { a: "Jaques St Pierre",          b: "Jaques StMierre",   expected: false,  note: "last names different" },
 ];
 
 // Tables and suffixes from https://github.com/craj/name-match/blob/main/src/name-normalizer.js
