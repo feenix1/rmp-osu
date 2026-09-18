@@ -18,7 +18,13 @@ const nameMatchTests = [
   { a: "J. Smith",                b: "John A. Smith",       expected: false, note: "initials ambiguous" },
   { a: "Dr",                      b: "John",                expected: false, note: "only prefix / insufficient" },
   { a: "",                        b: "John Smith",          expected: false, note: "empty input" },
-  { a: "Alice Johnson",           b: "Robert Brown",        expected: false, note: "completely different" }
+  { a: "Alice Johnson",           b: "Robert Brown",        expected: false, note: "completely different" },
+  { a: "Dr. Emily Davis",          b: "Emily Davis",         expected: true,  note: "prefix removed" },
+  { a: "Dr. Emily Davis",          b: "Dr. Emily Davis",     expected: true,  note: "same name with prefix" },
+  { a: "Emily Davis",              b: "Emily Davis",         expected: true,  note: "same name without prefix" },
+  { a: "Dr. First M. Last",          b: "First M. Last",       expected: true,  note: "prefix removed, middle initial kept" },
+  { a: "Dr. First M. Last",          b: "First Last",           expected: true,  note: "prefix removed, middle initial ignored" },
+  { a: "Dr. First M. Last",          b: "First Middle Last",    expected: true,  note: "prefix removed, middle name ignored" },
 ];
 
 if (TEST_NAME_MATCHING) {
