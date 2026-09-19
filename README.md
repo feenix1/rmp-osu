@@ -5,6 +5,7 @@ Find out the ratings of professors at Oregon State University, without having to
 - Adds rating under the "Instructor" section in the details after clicking on a class
 - Adds number of ratings also in that place
 - Adds clicking on instructor name to link directly to RateMyProfessor page for more details
+- Adds rating, rating count to section list
 
 ## Installation
 Available for [Chrome](https://chromewebstore.google.com/detail/osu-scheduler-+-rate-my-p/dcjnmpjjnnddibpjolcpdpkbpjljmhge) and [Firefox](https://addons.mozilla.org/en-US/firefox/addon/osu-classes-rate-my-professor/). Works automatically, just navigate to [classes.oregonstate.edu](https://classes.oregonstate.edu/) with the extension installed.
