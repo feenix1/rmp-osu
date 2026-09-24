@@ -440,40 +440,40 @@ async function getProfessorDataFor(professorName) {
     return null;
 }
 
-function createRatingElement(profData, fallbackName = null) {
+function createRatingElement(profData, schedulerName = null) {
     const ratingEl = document.createElement("div");
     ratingEl.style.marginTop = "5px";
     ratingEl.style.fontSize = "14px";
     let text = "";
     if (profData != null && profData.legacyId != null && profData.avgRating != null && profData.numRatings != null) {
-        text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} ratings)`;
+        text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${schedulerName}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} ratings)`;
         if (profData.numRatings == 1) {
-            text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} rating)`;
+            text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${schedulerName}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} rating)`;
         }
         if (profData.numRatings == 0) {
-            text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a> (No ratings)`;
+            text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${schedulerName}</strong></a> (No ratings)`;
         }        
     }        
     else {
-        console.log("RMP-OSU: No RMP data for " + fallbackName);
-        text = `<strong> ${fallbackName}</strong> (No RMP Data)`;
+        console.log("RMP-OSU: No RMP data for " + schedulerName);
+        text = `<a href="https://www.ratemyprofessors.com/search/professors/742?q=${encodeURIComponent(schedulerName)}" target="_blank"><strong> ${schedulerName}</strong> (No RMP Match)</a>`;
     }
     ratingEl.innerHTML = text;
     return ratingEl;
 }
 
 async function addRMPToClassDescription() {
-    const instructorEl = getProfessorDescriptionElement();
-    if (!instructorEl || instructorEl.length === 0) return;
-    if (instructorEl.classList.contains("rmp-osu-injected")) return;
-    const instructorName = instructorEl.textContent.trim();
-    if (instructorName == "") return;
-    console.log("RMP-OSU: Found instructor name:", instructorEl.textContent);
-    const profData = await getProfessorDataFor(instructorName);
-    instructorEl.textContent = "";
-    instructorEl.classList.add("rmp-osu-injected");
-    const ratingEl = createRatingElement(profData, instructorName);
-    instructorEl.appendChild(ratingEl);
+    const profElement = getProfessorDescriptionElement();
+    if (!profElement || profElement.length === 0) return;
+    if (profElement.classList.contains("rmp-osu-injected")) return;
+    const schedulerProfName = profElement.textContent.trim();
+    if (schedulerProfName == "") return;
+    console.log("RMP-OSU: Found instructor name:", profElement.textContent);
+    const profData = await getProfessorDataFor(schedulerProfName);
+    profElement.textContent = "";
+    profElement.classList.add("rmp-osu-injected");
+    const ratingEl = createRatingElement(profData, schedulerProfName);
+    profElement.appendChild(ratingEl);
 }
 
 async function getInstructorForCRN(crn) {
