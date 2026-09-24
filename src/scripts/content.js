@@ -312,8 +312,10 @@ crnToInstructorCache = {}
 classNameToSectionDataCache = {}
 
 class ProfessorData {
-    constructor(name, avgRating, numRatings, wouldTakeAgainPercent, avgDifficulty, legacyId) {
+    constructor(name, rmpName, schdlName, avgRating, numRatings, wouldTakeAgainPercent, avgDifficulty, legacyId) {
         this.name = name;
+        this.rawRMPName = rmpName; 
+        this.rawScheduleName = schdlName; 
         this.avgRating = avgRating.toPrecision(2);
         this.numRatings = numRatings;
         this.wouldTakeAgainPercent = wouldTakeAgainPercent;
@@ -352,16 +354,16 @@ function getProfessorDescriptionElement() {
 // }
 
 
-async function getProfessorDataFor(professorName) {
-    if (professorName == null || professorName.trim() === "") {
+async function makeProfessorData(schedulerName) {
+    if (schedulerName == null || schedulerName.trim() === "") {
         console.log("RMP-OSU: No professor name provided");
         return null;
     }
-    if (profDataCache[professorName]) {
-        console.log("RMP-OSU: Returning cached data for " + professorName);
-        return profDataCache[professorName];
+    if (profDataCache[schedulerName]) {
+        console.log("RMP-OSU: Returning cached data for " + schedulerName);
+        return profDataCache[schedulerName];
     }
-    console.log("RMP-OSU: Requesting RMP data for " + professorName);
+    console.log("RMP-OSU: Requesting RMP data for " + schedulerName);
     const gqlQuery = `
         query NewSearch($query: TeacherSearchQuery!) {
             newSearch {
@@ -396,47 +398,49 @@ async function getProfessorDataFor(professorName) {
             query: gqlQuery,
             variables: {
                 query: {
-                    text: professorName,
+                    text: schedulerName,
                     schoolID: "U2Nob29sLTc0Mg=="
                 }
             }
         })
     })
     if (!response.success) {
-        console.error("RMP-OSU: Failed to get a response for " + professorName + ": " + response.error);
+        console.error("RMP-OSU: Failed to get a response for " + schedulerName + ": " + response.error);
         return null;
     }
     const gqlResponse = JSON.parse(response.data);
     if (gqlResponse.errors) {
-        console.error("RMP-OSU: GraphQL error(s) found in JSON response while fetching RMP data for " + professorName + ": " + gqlResponse.errors.map(e => e.message).join(", "));
+        console.error("RMP-OSU: GraphQL error(s) found in JSON response while fetching RMP data for " + schedulerName + ": " + gqlResponse.errors.map(e => e.message).join(", "));
         return null;
     }
-    const teachers = gqlResponse.data.newSearch.teachers.edges;
-    if (teachers.length === 0) {
-        console.log("RMP-OSU: No teachers found in GraphQL query for " + professorName);
+    const rmpTeachers = gqlResponse.data.newSearch.teachers.edges;
+    if (rmpTeachers.length === 0) {
+        console.log("RMP-OSU: No teachers found in GraphQL query for " + schedulerName);
         return null;
     }
     // TODO: Make amount of results to match configureable
-    for (let i = 0; i < teachers.length; i++) {
-        const teacher = teachers[i].node;
-        const fullNameStripped = `${teacher.firstName}${teacher.lastName}`.toLowerCase().replace(/[.\s]+/g, '');
-        const professorNameStripped = professorName.toLowerCase().replace(/[.\s]+/g, '');
+    for (let i = 0; i < rmpTeachers.length; i++) {
+        const rmpTeacher = rmpTeachers[i].node;
+        const fullNameStripped = `${rmpTeacher.firstName}${rmpTeacher.lastName}`.toLowerCase().replace(/[.\s]+/g, '');
+        const professorNameStripped = schedulerName.toLowerCase().replace(/[.\s]+/g, '');
         console.log(`RMP-OSU: Comparing ${fullNameStripped} to ${professorNameStripped}`);
         if (fullNameStripped === professorNameStripped) {
             const profData = new ProfessorData(
-                new Name(`${teacher.firstName} ${teacher.lastName}`),
-                teacher.avgRating,
-                teacher.numRatings,
-                teacher.wouldTakeAgainPercent,
-                teacher.avgDifficulty,
-                teacher.legacyId
+                new Name(`${rmpTeacher.firstName} ${rmpTeacher.lastName}`),
+                `${rmpTeacher.firstName} ${rmpTeacher.lastName}`,
+                schedulerName,
+                rmpTeacher.avgRating,
+                rmpTeacher.numRatings,
+                rmpTeacher.wouldTakeAgainPercent,
+                rmpTeacher.avgDifficulty,
+                rmpTeacher.legacyId
             );
-            console.log(`RMP-OSU: Found matching RMP data for ${professorName} with name ${teacher.firstName} ${teacher.lastName}`, profData);
-            profDataCache[professorName] = profData;
+            console.log(`RMP-OSU: Found matching RMP data for ${schedulerName} with name ${rmpTeacher.firstName} ${rmpTeacher.lastName}`, profData);
+            profDataCache[schedulerName] = profData;
             return profData;
         }
     }
-    console.log("RMP-OSU: No matching RMP data found for " + professorName);
+    console.log("RMP-OSU: No matching RMP data found for " + schedulerName);
     return null;
 }
 
@@ -455,8 +459,8 @@ function createRatingElement(profData, schedulerName = null) {
         }        
     }        
     else {
-        console.log("RMP-OSU: No RMP data for " + schedulerName);
-        text = `<a href="https://www.ratemyprofessors.com/search/professors/742?q=${encodeURIComponent(schedulerName)}" target="_blank"><strong> ${schedulerName}</strong> (No RMP Match)</a>`;
+        console.log("RMP-OSU: No RMP match for " + schedulerName);
+        text = `<a title="Search for name on RateMyProfessor" href="https://www.ratemyprofessors.com/search/professors/742?q=${encodeURIComponent(schedulerName)}" target="_blank"><strong> ${schedulerName}</strong></a> (No RMP Match)`;
     }
     ratingEl.innerHTML = text;
     return ratingEl;
@@ -469,14 +473,14 @@ async function addRMPToClassDescription() {
     const schedulerProfName = profElement.textContent.trim();
     if (schedulerProfName == "") return;
     console.log("RMP-OSU: Found instructor name:", profElement.textContent);
-    const profData = await getProfessorDataFor(schedulerProfName);
+    const profData = await makeProfessorData(schedulerProfName);
     profElement.textContent = "";
     profElement.classList.add("rmp-osu-injected");
     const ratingEl = createRatingElement(profData, schedulerProfName);
     profElement.appendChild(ratingEl);
 }
 
-async function getInstructorForCRN(crn) {
+async function getInstructorNameForCRN(crn) {
     if (crnToInstructorCache[crn]) {
         console.log(`RMP-OSU: Returning cached instructor ${crnToInstructorCache[crn]} for CRN ${crn}`);
         return crnToInstructorCache[crn];
@@ -588,9 +592,9 @@ async function addRMPToSections() {
         if (section.classList.contains("rmp-osu-injected")) continue;
         section.classList.add("rmp-osu-injected");
         const crn = getSectionCRN(section);
-        const instructor = await getInstructorForCRN(crn);
-        if (instructor != null && instructor.trim() !== "") {
-            const profData = await getProfessorDataFor(instructor);
+        const schedulerName = await getInstructorNameForCRN(crn);
+        if (schedulerName != null && schedulerName.trim() !== "") {
+            const profData = await makeProfessorData(schedulerName);
             if (profData != null) {
                 console.log(`RMP-OSU: Got RMP data for section ${crn}:`, profData);
                 const instructorValue = createSectionColValueElement("instructor");
@@ -598,10 +602,10 @@ async function addRMPToSections() {
                 link.href = profData.getProfLink();
                 link.target = "_blank";
                 if (profData.numRatings == 0) {
-                    link.textContent = `${profData.getFullName()} (No ratings)`;
+                    link.textContent = `${profData.schedulerName} (No ratings)`;
                 }
                 else {
-                    link.textContent = `${profData.getFullName()} ${profData.avgRating}⭐`;
+                    link.textContent = `${profData.schedulerName} ${profData.avgRating}⭐`;
                 }
                 instructorValue.appendChild(link);
                 const ratingValue = createSectionColValueElement("rating");
@@ -611,14 +615,14 @@ async function addRMPToSections() {
                 continue
             }
         }
-        console.log(`RMP-OSU: No RMP data for section ${crn} with instructor ${instructor}`);
+        console.log(`RMP-OSU: No RMP data for section ${crn} with instructor ${schedulerName}`);
         const instructorValue = createSectionColValueElement("instructor");
         const link = document.createElement("p");
-        if (instructor == null || instructor.trim() === "") {
+        if (schedulerName == null || schedulerName.trim() === "") {
             link.textContent = `(N/A)`;
         }
         else {
-            link.textContent = `${instructor} (Not in RMP)`;
+            link.textContent = `${schedulerName} (Not in RMP)`;
         }
         instructorValue.appendChild(link);
         const ratingValue = createSectionColValueElement("rating");
