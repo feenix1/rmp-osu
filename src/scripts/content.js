@@ -2,6 +2,9 @@
 // Name Matching
 // ===================================================
 
+// Also consider searching last name, first name then just using first option?
+// don't like it because it might lead to incorrect matches
+
 const TEST_NAME_MATCHING = true; // REMEMBER TO SET TO FALSE BEFORE BUILDING
 const nameMatchTests = [
   { a: "Dr. John Smith",          b: "John Smith",          expected: true,  note: "prefix removed" },
@@ -30,6 +33,7 @@ const nameMatchTests = [
 // Tables and suffixes from https://github.com/craj/name-match/blob/main/src/name-normalizer.js
 const PREFIXES = ['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'rev', 'hon'];
 const SUFFIXES = ['jr', 'sr', 'ii', 'iii', 'iv', 'v', 'md', 'phd', 'esq'];
+const LAST_NAME_PREFIXES = ['de', 'van', 'von', 'le', 'la', 'di', 'del', 'o', 'mc', 'mac', 'st'];
 const NAME_TO_ALIAS = {
   'william': ['will', 'bill', 'billy', 'willy', 'willie'],
   'robert': ['rob', 'bob', 'bobby', 'robbie'],
@@ -161,13 +165,15 @@ class Name {
             return;
         }
 
-        // lower and trim
+        // overall parsing steps
+        // everything is trimmed lowercased and asciid
+        //
+        // ex: "  Dr. John St Smith-Henry Jr."
+
         nameString = nameString.toLowerCase();
         nameString = nameString.trim();
-        // remove accents and punctuation
         nameString = Name.removeAccents(nameString);
 
-        // extract prefix, remove it
         this.prefix = Name.extractPrefix(nameString);
         if (this.prefix) {
             nameString = nameString.replace(this.prefix, "").trim();
@@ -241,11 +247,15 @@ class Name {
         nameString = nameString.replace(/ú|ù|û|ü/g, 'u');
         nameString = nameString.replace(/ç/g, 'c');
         nameString = nameString.replace(/ñ/g, 'n');
-        nameString = nameString.replace(/[^a-z\s]/g, '');
         return nameString;
+    }
+    static removePunctuation(nameString) {
+        if (!nameString) return null;
+        return nameString.replace(/[^a-z\s]/g, '');
     }
     static extractPrefix(nameString) {
         if (!nameString) return null;
+        nameString = Name.removePunctuation(nameString);
         const prefix = nameString.split(' ')[0];
         if (PREFIXES.includes(prefix.toLowerCase())) {
             return prefix;
