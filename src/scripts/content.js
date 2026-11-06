@@ -5,7 +5,7 @@
 // Also consider searching last name, first name then just using first option?
 // don't like it because it might lead to incorrect matches
 
-const TEST_NAME_MATCHING = false; // REMEMBER TO SET TO FALSE BEFORE BUILDING
+const TEST_NAME_MATCHING = true; // REMEMBER TO SET TO FALSE BEFORE BUILDING
 const nameMatchTests = [
   { a: "Dr. John Smith",          b: "John Smith",          expected: true,  note: "prefix removed" },
   { a: "John A. Smith",           b: "John Smith",          expected: true,  note: "middle initial ignored" },
@@ -28,6 +28,7 @@ const nameMatchTests = [
   { a: "Jaques St Pierre",          b: "Jacques St Pierre",   expected: true,  note: "minor typo in given name" },
   { a: "Jaques St Pierre",          b: "Jaques StPierre",   expected: true,  note: "splitting of compound last name" },
   { a: "Jaques St Pierre",          b: "Jaques StMierre",   expected: false,  note: "last names different" },
+  { a: "Carlogs Blath llkjlk Pierre",          b: "Carlogs Pierre",   expected: true,  note: "compound last name" },
 ];
 
 // Tables and suffixes from https://github.com/craj/name-match/blob/main/src/name-normalizer.js
@@ -35,18 +36,17 @@ const PREFIXES = ['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'rev', 'hon'];
 const SUFFIXES = ['jr', 'sr', 'ii', 'iii', 'iv', 'v', 'md', 'phd', 'esq'];
 const LAST_NAME_PREFIXES = ['de', 'van', 'von', 'le', 'la', 'di', 'del', 'o', 'mc', 'mac', 'st'];
 const NAME_TO_ALIAS = {
-  'william': ['will', 'bill', 'billy', 'willy', 'willie'],
+  'william': ['will'],
   'robert': ['rob', 'bob', 'bobby', 'robbie'],
   'richard': ['rick', 'dick', 'richie', 'ricky'],
-  'michael': ['mike', 'mikey', 'mick'],
-  'james': ['jim', 'jimmy', 'jamie'],
+  'michael': ['mike'],
   'joseph': ['joe', 'joey', 'jo'],
   'thomas': ['tom', 'tommy'],
-  'christopher': ['chris', 'topher'],
+  'christopher': ['chris'],
   'charles': ['chuck', 'charlie', 'chas'],
   'daniel': ['dan', 'danny'],
-  'matthew': ['matt', 'matty'],
-  'anthony': ['tony', 'ant'],
+  'matthew': ['matt', 'matty', 'mathew'],
+  'anthony': ['tony'],
   'steven': ['steve', 'stevie'],
   'kenneth': ['ken', 'kenny'],
   'edward': ['ed', 'eddie', 'ted', 'teddy'],
@@ -75,6 +75,10 @@ const NAME_TO_ALIAS = {
   'david': ['dave', 'davey'],
   'joshua': ['josh']
 };
+
+const MATCH_TABLE = {
+    'Alex Guyer': ['Alexander Guyer'],
+}
 
 // reverse lookup
 const ALIAS_TO_NAME = {};
@@ -154,7 +158,7 @@ class Name {
         // and get rid of punctuation and make accents closest ascii.
         // tbh scheduler and rmp might not support non-ascii names but just in case
 
-        // init everything null
+        this.rawName = nameString;
         this.prefix = null;
         this.firstName = null;
         this.lastName1 = null;
@@ -178,18 +182,25 @@ class Name {
         if (this.prefix) {
             nameString = nameString.replace(this.prefix, "").trim();
         }
-        if (nameString.trim() === "") {
-            console.warn("RMP-OSU: Name constructor called with name string that only contains a prefix.");
+        nameString = Name.removePeriods(nameString);
+        nameString = nameString.trim();
+        if (nameString === "") {
+            console.warn("RMP-OSU: Name constructor called with name string that only contains a prefix.", originalNameString, nameString);
             return
         }
 
         // in the case of non defined prefix its kinda over
-        this.firstName = Name.getBasicFirstName(nameString.split(' ')[0]);
-        nameString = nameString.replace(this.firstName, "").trim();
+        // resolves all firstNames to cononical name
+        const rawName = nameString.split(' ')[0];
+        this.firstName = Name.getBasicFirstName(rawName);
+        nameString = nameString.replace(rawName, '').trim();
         if (nameString === "") {
-            console.warn("RMP-OSU: Name constructor called with name string that contains nothing past first name.");
+            console.warn("RMP-OSU: Name constructor called with name string that contains nothing past first name.", originalNameString, nameString);
             return
         }
+
+        this.suffix = Name.extractSuffix(nameString);
+        nameString = nameString.replace(" " + this.suffix, "").trim();
 
         if (!nameString.includes('-')) {
             // non-hyphenated
@@ -207,11 +218,10 @@ class Name {
                 this.lastName2 = lastNames[1].trim();
             }
             else {
-                console.warn("RMP-OSU: Name constructor called with name string that contains a hyphen but no second last name.");
+                console.warn("RMP-OSU: Name constructor called with name string that contains a hyphen but no second last name.", originalNameString, nameString);
             }
         }
 
-        this.suffix = Name.extractSuffix(nameString);
     }
 
     /**
@@ -233,13 +243,23 @@ class Name {
     // - "André Smith" vs "Andre Smith"
     // and typos
     similarTo(otherName) {
-        if (!otherName) return false;
-        if (this.firstName !== otherName.firstName) return false;
-        // TODO: add better matching, wip for parsing test
-        return true;
+        // Check raw names in match table first
+        if (otherName == null) return false;
+        if (MATCH_TABLE[this.rawName]) {
+            return MATCH_TABLE[this.rawName].includes(otherName.rawName);
+        }
+        let score = 0;
+        score += jaroWinklerSimilarity(this.firstName, otherName.firstName) * 2;
+        const combined = `${this.lastName1}${this.lastName2 || ""}`;
+        const otherCombined = `${otherName.lastName1}${otherName.lastName2 || ""}`;
+        score += jaroWinklerSimilarity(combined, otherCombined) * 2;
+        if (this.prefix && this.prefix === otherName.prefix) score += 1;
+        if (this.suffix && this.suffix === otherName.suffix) score += 1;
+        return score >= 3.8;
     }
+    // All these return the modified string or same string if no changes can be made
     static removeAccents(nameString) {
-        if (!nameString) return null;
+        if (!nameString) return nameString;
         nameString = nameString.replace(/á|à|â|ã|ä/g, 'a');
         nameString = nameString.replace(/é|è|ê|ë/g, 'e');
         nameString = nameString.replace(/í|ì|î|ï/g, 'i');
@@ -250,11 +270,15 @@ class Name {
         return nameString;
     }
     static removePunctuation(nameString) {
-        if (!nameString) return null;
+        if (!nameString) return nameString;
         return nameString.replace(/[^a-z\s]/g, '');
     }
+    static removePeriods(nameString) {
+        if (!nameString) return nameString;
+        return nameString.replace(/\./g, '');
+    }
     static extractPrefix(nameString) {
-        if (!nameString) return null;
+        if (!nameString) return nameString;
         nameString = Name.removePunctuation(nameString);
         const prefix = nameString.split(' ')[0];
         if (PREFIXES.includes(prefix.toLowerCase())) {
@@ -263,7 +287,7 @@ class Name {
         return null;
     }
     static extractSuffix(nameString) {
-        if (!nameString) return null;
+        if (!nameString) return nameString;
         const parts = nameString.split(' ');
         if (parts.length === 0) return null;
         const suffix = parts[parts.length - 1];
@@ -273,7 +297,7 @@ class Name {
         return null;
     }
     static getBasicFirstName(firstName) {
-        if (!firstName) return null;
+        if (!firstName) return firstName;
         if (ALIAS_TO_NAME.hasOwnProperty(firstName.toLowerCase())) {
             return ALIAS_TO_NAME[firstName.toLowerCase()][0];
         }
@@ -300,6 +324,7 @@ if (TEST_NAME_MATCHING) {
         console.log(`RMP-OSU: ${test.a} parsed as`, nameA);
         console.log(`RMP-OSU: ${test.b} parsed as`, nameB);
         console.log(`RMP-OSU: Similarity between ${test.a} and ${test.b}: ${result}`);
+        console.assert(result === test.expected, `RMP-OSU: Test failed for ${test.a} vs ${test.b}: expected ${test.expected}, got ${result}. Note: ${test.note}`);
     }
 }
 
@@ -310,6 +335,28 @@ if (TEST_NAME_MATCHING) {
 profDataCache = {}
 crnToInstructorCache = {}
 classNameToSectionDataCache = {}
+
+function getProfDataCache(key) {
+    return profDataCache[key];
+}
+function setProfDataCache(key, value) {
+    profDataCache[key] = value;
+}
+
+function getCrnToInstructorCache(key) {
+    return crnToInstructorCache[key];
+}
+function setCrnToInstructorCache(key, value) {
+    crnToInstructorCache[key] = value;
+}
+
+function getClassNameToSectionDataCache(key) {
+    return classNameToSectionDataCache[key];
+}
+function setClassNameToSectionDataCache(key, value) {
+    classNameToSectionDataCache[key] = value;
+}
+
 
 class ProfessorData {
     constructor(name, rmpName, schdlName, avgRating, numRatings, wouldTakeAgainPercent, avgDifficulty, legacyId) {
@@ -359,9 +406,10 @@ async function makeProfessorData(schedulerName) {
         console.log("RMP-OSU: No professor name provided");
         return null;
     }
-    if (profDataCache[schedulerName]) {
+    const cached = getProfDataCache(schedulerName);
+    if (cached) {
         console.log("RMP-OSU: Returning cached data for " + schedulerName);
-        return profDataCache[schedulerName];
+        return cached;
     }
     console.log("RMP-OSU: Requesting RMP data for " + schedulerName);
     const gqlQuery = `
@@ -424,7 +472,9 @@ async function makeProfessorData(schedulerName) {
         const fullNameStripped = `${rmpTeacher.firstName}${rmpTeacher.lastName}`.toLowerCase().replace(/[.\s]+/g, '');
         const professorNameStripped = schedulerName.toLowerCase().replace(/[.\s]+/g, '');
         console.log(`RMP-OSU: Comparing ${fullNameStripped} to ${professorNameStripped}`);
-        if (fullNameStripped === professorNameStripped) {
+
+        const probablySame = fullNameStripped === professorNameStripped 
+        if (probablySame) {
             const profData = new ProfessorData(
                 new Name(`${rmpTeacher.firstName} ${rmpTeacher.lastName}`),
                 `${rmpTeacher.firstName} ${rmpTeacher.lastName}`,
@@ -439,6 +489,7 @@ async function makeProfessorData(schedulerName) {
             profDataCache[schedulerName] = profData;
             return profData;
         }
+
     }
     console.log("RMP-OSU: No matching RMP data found for " + schedulerName);
     return null;
