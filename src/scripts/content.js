@@ -185,7 +185,7 @@ class Name {
         nameString = Name.removePeriods(nameString);
         nameString = nameString.trim();
         if (nameString === "") {
-            console.warn("RMP-OSU: Name constructor called with name string that only contains a prefix.", originalNameString, nameString);
+            console.warn("RMP-OSU: Name constructor called with name string that only contains a prefix.", this.rawName, nameString);
             return
         }
 
@@ -195,7 +195,7 @@ class Name {
         this.firstName = Name.getBasicFirstName(rawName);
         nameString = nameString.replace(rawName, '').trim();
         if (nameString === "") {
-            console.warn("RMP-OSU: Name constructor called with name string that contains nothing past first name.", originalNameString, nameString);
+            console.warn("RMP-OSU: Name constructor called with name string that contains nothing past first name.", this.rawName, nameString);
             return
         }
 
@@ -307,7 +307,6 @@ class Name {
         const parts = [];
         if (this.prefix) parts.push(this.prefix);
         if (this.firstName) parts.push(this.firstName);
-        if (this.middleName) parts.push(this.middleName);
         if (this.lastName1) parts.push(this.lastName1);
         if (this.lastName2) parts.push(this.lastName2);
         if (this.suffix) parts.push(this.suffix);
@@ -332,10 +331,11 @@ if (TEST_NAME_MATCHING) {
 // Content Script
 // ===================================================
 
-profDataCache = {}
-crnToInstructorCache = {}
-classNameToSectionDataCache = {}
+const profDataCache = {}
+const crnToInstructorCache = {}
+const classNameToSectionDataCache = {}
 
+// Use scheduler.rawName as key
 function getProfDataCache(key) {
     return profDataCache[key];
 }
@@ -359,14 +359,20 @@ function setClassNameToSectionDataCache(key, value) {
 
 
 class ProfessorData {
-    constructor(name, rmpName, schdlName, avgRating, numRatings, wouldTakeAgainPercent, avgDifficulty, legacyId) {
-        this.name = name;
-        this.rawRMPName = rmpName; 
-        this.rawScheduleName = schdlName; 
-        this.avgRating = avgRating.toPrecision(2);
+    // scheduleName is the canonical name for display and reference
+    constructor(rmpName, scheduleName, avgRating, numRatings, wouldTakeAgainPercent, avgDifficulty, legacyId) {
+        this.rmpName = rmpName; 
+        this.scheduleName = scheduleName; 
+        this.avgRating = avgRating;
+        if (avgRating != null) {
+            this.avgRating = avgRating.toPrecision(2);
+        }
         this.numRatings = numRatings;
         this.wouldTakeAgainPercent = wouldTakeAgainPercent;
-        this.avgDifficulty = avgDifficulty.toPrecision(2);
+        this.avgDifficulty = avgDifficulty;
+        if (avgDifficulty != null) {
+            this.avgDifficulty = avgDifficulty.toPrecision(2);
+        }
         this.legacyId = legacyId;
     }
     getProfLink() {
@@ -378,10 +384,10 @@ class ProfessorData {
         }
     }
     getFullName() {
-        if (!this.name) {
+        if (!this.scheduleName) {
             return null;
         }
-        return this.name.toString();
+        return this.scheduleName.rawName;
     }
 }
 
@@ -469,16 +475,13 @@ async function makeProfessorData(schedulerName) {
     // TODO: Make amount of results to match configureable
     for (let i = 0; i < rmpTeachers.length; i++) {
         const rmpTeacher = rmpTeachers[i].node;
-        const fullNameStripped = `${rmpTeacher.firstName}${rmpTeacher.lastName}`.toLowerCase().replace(/[.\s]+/g, '');
-        const professorNameStripped = schedulerName.toLowerCase().replace(/[.\s]+/g, '');
-        console.log(`RMP-OSU: Comparing ${fullNameStripped} to ${professorNameStripped}`);
-
-        const probablySame = fullNameStripped === professorNameStripped 
+        const rmpName = new Name(`${rmpTeacher.firstName} ${rmpTeacher.lastName}`);
+        const schedlName = new Name(schedulerName);
+        const probablySame = rmpName.similarTo(schedlName);
         if (probablySame) {
             const profData = new ProfessorData(
-                new Name(`${rmpTeacher.firstName} ${rmpTeacher.lastName}`),
-                `${rmpTeacher.firstName} ${rmpTeacher.lastName}`,
-                schedulerName,
+                rmpName,
+                schedlName,
                 rmpTeacher.avgRating,
                 rmpTeacher.numRatings,
                 rmpTeacher.wouldTakeAgainPercent,
@@ -486,10 +489,9 @@ async function makeProfessorData(schedulerName) {
                 rmpTeacher.legacyId
             );
             console.log(`RMP-OSU: Found matching RMP data for ${schedulerName} with name ${rmpTeacher.firstName} ${rmpTeacher.lastName}`, profData);
-            profDataCache[schedulerName] = profData;
+            setProfDataCache(schedlName.rawName, profData);
             return profData;
         }
-
     }
     console.log("RMP-OSU: No matching RMP data found for " + schedulerName);
     return null;
@@ -532,9 +534,10 @@ async function addRMPToClassDescription() {
 }
 
 async function getInstructorNameForCRN(crn) {
-    if (crnToInstructorCache[crn]) {
-        console.log(`RMP-OSU: Returning cached instructor ${crnToInstructorCache[crn]} for CRN ${crn}`);
-        return crnToInstructorCache[crn];
+    const cachedInstructor = getCrnToInstructorCache(crn);
+    if (cachedInstructor) {
+        console.log(`RMP-OSU: Returning cached instructor ${cachedInstructor} for CRN ${crn}`);
+        return cachedInstructor;
     }
     const response = await chrome.runtime.sendMessage({
         type: "fetchRequest",
@@ -556,7 +559,7 @@ async function getInstructorNameForCRN(crn) {
     tempDiv.style.display = "none";
     tempDiv.innerHTML = parsed.instructordetail_html;
     const instructorName = tempDiv.textContent.trim();
-    crnToInstructorCache[crn] = instructorName;
+    setCrnToInstructorCache(crn, instructorName);
     return instructorName;
 }
 
@@ -569,9 +572,10 @@ function getSectionTitleRow() {
 }
 
 async function getSectionDataFor(className) {
-    if (classNameToSectionDataCache[className]) {
+    const cachedSectionData = getClassNameToSectionDataCache(className);
+    if (cachedSectionData) {
         console.log(`RMP-OSU: Returning cached section data for ${className}`);
-        return classNameToSectionDataCache[className];
+        return cachedSectionData.allInGroup;
     }
     const response = await chrome.runtime.sendMessage({
         type: "fetchRequest",
@@ -584,8 +588,12 @@ async function getSectionDataFor(className) {
         },
         body: `{"group": "code:${className}"}`
     });
+    if (!response.success) {
+        console.error(`RMP-OSU: Failed to fetch section data for ${className}: ${response.error}`);
+        return null;
+    }
     const parsed = JSON.parse(response.body);
-    classNameToSectionDataCache[className] = parsed;
+    setClassNameToSectionDataCache(className, parsed);
     return parsed.allInGroup;
 }
 
@@ -653,10 +661,10 @@ async function addRMPToSections() {
                 link.href = profData.getProfLink();
                 link.target = "_blank";
                 if (profData.numRatings == 0) {
-                    link.textContent = `${profData.schedulerName} (No ratings)`;
+                    link.textContent = `${profData.getFullName()} (No ratings)`;
                 }
                 else {
-                    link.textContent = `${profData.schedulerName} ${profData.avgRating}⭐`;
+                    link.textContent = `${profData.getFullName()} ${profData.avgRating}⭐`;
                 }
                 instructorValue.appendChild(link);
                 const ratingValue = createSectionColValueElement("rating");
@@ -707,4 +715,3 @@ async function main() {
 
 console.log("RMP-OSU: Content script loaded.");
 main();
-
