@@ -445,7 +445,9 @@ async function makeProfessorData(schedulerName) {
         }
     `;
 
-    // thank you ansel for "lastname, first" idea
+    // thanks ansel for "lastname, first" idea
+    // don't know if it actually makes a difference
+    // and adding comma breaks most querys for some reason
     let searchName = schedulerName.split(" ");
     searchName = `${searchName.slice(1).join(" ")} ${searchName[0]}`;
 
