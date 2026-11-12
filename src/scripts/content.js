@@ -5,7 +5,7 @@
 // Also consider searching last name, first name then just using first option?
 // don't like it because it might lead to incorrect matches
 
-const TEST_NAME_MATCHING = true; // REMEMBER TO SET TO FALSE BEFORE BUILDING
+const TEST_NAME_MATCHING = false; // REMEMBER TO SET TO FALSE BEFORE BUILDING
 const nameMatchTests = [
   { a: "Dr. John Smith",          b: "John Smith",          expected: true,  note: "prefix removed" },
   { a: "John A. Smith",           b: "John Smith",          expected: true,  note: "middle initial ignored" },
