@@ -12,3 +12,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         .catch(error => sendResponse({ success: false, error: error.toString() }));
     return true;
 });
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type !== "storeDataSync") return;
+    const key = msg.key;
+    const value = msg.value;
+    chrome.storage.sync.set({ [key]: value }, () => {
+        sendResponse({ success: true });
+    });
+    return true;
+})
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type !== "readDataSync") return;
+    const key = msg.key;
+    chrome.storage.sync.get([key], (result) => {
+        sendResponse({ success: true, data: result[key] });
+    });
+    return true;
+})

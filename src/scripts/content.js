@@ -1,18 +1,384 @@
-profDataCache = {}
-crnToInstructorCache = {}
-classNameToSectionDataCache = {}
+// ===================================================
+// Name Matching
+// ===================================================
 
-class ProfessorData {
-    constructor(firstName, lastName, avgRating, numRatings, wouldTakeAgainPercent, avgDifficulty, legacyId) {
-        this.firstName = firstName;
-        this.lastName = lastName;
-        this.avgRating = avgRating.toPrecision(2);
-        this.numRatings = numRatings;
-        this.wouldTakeAgainPercent = wouldTakeAgainPercent;
-        this.avgDifficulty = avgDifficulty.toPrecision(2);
-        this.legacyId = legacyId;
+// Also consider searching last name, first name then just using first option?
+// don't like it because it might lead to incorrect matches
+
+const TEST_NAME_MATCHING = false; // REMEMBER TO SET TO FALSE BEFORE BUILDING
+const nameMatchTests = [
+  { a: "Dr. John Smith",          b: "John Smith",          expected: true,  note: "prefix removed" },
+  { a: "John A. Smith",           b: "John Smith",          expected: true,  note: "middle initial ignored" },
+  { a: "John Smith Jr.",          b: "John Smith",          expected: true,  note: "suffix ignored" },
+  { a: "John Smith-Henry",        b: "John Smith Henry",    expected: true,  note: "hyphenation/spacing" },
+  { a: "John Henry-Smith",        b: "John Smith-Henry",    expected: true,  note: "compound last-name reorder" },
+  { a: "Alexander Smith",         b: "Alex Smith",          expected: true,  note: "nickname/alias" },
+  { a: "André Lefèvre",           b: "Andre Lefevre",       expected: true,  note: "diacritics normalized" },
+  { a: "Jonathan",                b: "Jonatahn",            expected: true,  note: "minor transposition/typo" },
+  { a: "Michael",                 b: "Mike",                expected: true,  note: "minor transposition/typo" },
+  { a: "John Smith",              b: "Jane Smith",          expected: false, note: "different given name" },
+  { a: "John Smith",              b: "John Smythe",         expected: false, note: "different family name" },
+  { a: "J. Smith",                b: "John A. Smith",       expected: false, note: "initials ambiguous" },
+  { a: "Dr",                      b: "John",                expected: false, note: "only prefix / insufficient" },
+  { a: "",                        b: "John Smith",          expected: false, note: "empty input" },
+  { a: "Alice Johnson",           b: "Robert Brown",        expected: false, note: "completely different" },
+  { a: "Dr. Emily Davis",          b: "Emily Davis",         expected: true,  note: "prefix removed" },
+  { a: "Dr. Emily Davis",          b: "Dr. Emily Davis",     expected: true,  note: "same name with prefix" },
+  { a: "Emily Davis",              b: "Emily Davis",         expected: true,  note: "same name without prefix" },
+  { a: "Jaques St Pierre",          b: "Jacques St Pierre",   expected: true,  note: "minor typo in given name" },
+  { a: "Jaques St Pierre",          b: "Jaques StPierre",   expected: true,  note: "splitting of compound last name" },
+  { a: "Jaques St Pierre",          b: "Jaques StMierre",   expected: false,  note: "last names different" },
+  { a: "Carlogs Blath llkjlk Pierre",          b: "Carlogs Pierre",   expected: true,  note: "compound last name" },
+  { a: "Timothy Alcon",          b: "Tim Alcon",   expected: true,  note: "real world first name alias" },
+];
+
+// Tables and suffixes from https://github.com/craj/name-match/blob/main/src/name-normalizer.js
+const PREFIXES = ['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'rev', 'hon'];
+const SUFFIXES = ['jr', 'sr', 'ii', 'iii', 'iv', 'v', 'md', 'phd', 'esq'];
+const LAST_NAME_PREFIXES = ['de', 'van', 'von', 'le', 'la', 'di', 'del', 'o', 'mc', 'mac', 'st'];
+const NAME_TO_ALIAS = {
+  'william': ['will'],
+  'robert': ['rob', 'bob', 'bobby', 'robbie'],
+  'richard': ['rick', 'dick', 'richie', 'ricky'],
+  'michael': ['mike'],
+  'joseph': ['joe', 'joey'],
+  'thomas': ['tom', 'tommy'],
+  'christopher': ['chris'],
+  'charles': ['chuck', 'charlie'],
+  'daniel': ['dan'],
+  'matthew': ['matt', 'matty', 'mathew'],
+  'anthony': ['tony'],
+  'steven': ['steve', 'stevie'],
+  'kenneth': ['ken', 'kenny'],
+  'edward': ['ed', 'eddie', 'ted', 'teddy'],
+  'donald': ['don', 'donny'],
+  'elizabeth': ['liz', 'lizzy', 'beth', 'betty', 'eli'],
+  'jennifer': ['jen', 'jenny'],
+  'katherine': ['kathy', 'kate', 'katie', 'katy'],
+  'margaret': ['maggie', 'meg', 'megan', 'peggy'],
+  'patricia': ['pat', 'patty', 'trish'],
+  'deborah': ['deb', 'debbie'],
+  'jessica': ['jess', 'jessie'],
+  'sandra': ['sandy'],
+  'barbara': ['barb', 'barbie'],
+  'stephanie': ['steph', 'stephy'],
+  'victoria': ['vicky', 'tori'],
+  'jonathan': ['jon', 'jonny'],
+  'nicholas': ['nick', 'nicky'],
+  'jeffrey': ['jeff'],
+  'benjamin': ['ben', 'benny'],
+  'timothy': ['tim', 'timmy'],
+  'gregory': ['greg', 'gregg'],
+  'raymond': ['ray'],
+  'samuel': ['sam', 'sammy'],
+  'andrew': ['andy', 'drew'],
+  'alexander': ['alex', 'al'],
+  'david': ['dave', 'davey'],
+  'joshua': ['josh']
+};
+
+// scheduler key to RMP names
+const MATCH_TABLE = {
+    'Alex Guyer': ['Alexander Guyer'],
+    'Tim Alcon': ['Timothy Alcon'],
+}
+
+// reverse lookup
+const ALIAS_TO_NAME = {};
+for (const [name, aliases] of Object.entries(NAME_TO_ALIAS)) {
+    for (const alias of aliases) {
+        if (!ALIAS_TO_NAME[alias]) {
+            ALIAS_TO_NAME[alias] = [];
+        }
+        ALIAS_TO_NAME[alias].push(name);
+    }
+}
+
+
+function jaroWinklerSimilarity(s1, s2) {
+    const PREFIX_SCALE = 0.1; // scaling factor for common prefix
+    const PREFIX_LENGTH = 4; // maximum prefix length to consider
+    const JW_THRESHOLD = 0.7; // threshold for applying the prefix adjustment
+
+    if (s1 === s2) return 1.0;
+    if (!s1 || !s2) return 0.0;
+    const len1 = s1.length;
+    const len2 = s2.length;
+    const maxDist = Math.max(0, Math.floor(Math.max(len1, len2) / 2) - 1);
+    let matches = 0;
+    const hash1 = new Array(len1).fill(false);
+    const hash2 = new Array(len2).fill(false);
+    for (let i = 0; i < len1; i++) {
+        const start = Math.max(0, i - maxDist);
+        const end = Math.min(i + maxDist + 1, len2);
+        for (let j = start; j < end; j++) {
+            if (hash2[j]) continue;
+            if (s1[i] === s2[j]) {
+                hash1[i] = true;
+                hash2[j] = true;
+                matches++;
+                break;
+            }
+        }
+    }
+    if (matches === 0) return 0.0;
+    let transpositions = 0;
+    let ptr = 0;
+    for (let i = 0; i < len1; i++) {
+        if (!hash1[i]) continue;
+        while (!hash2[ptr] && ptr < len2) {
+            ptr++;
+        }
+        if (s1[i] !== s2[ptr]) {
+            transpositions++;
+        }
+        ptr++;
+    }
+    transpositions /= 2;
+
+    const jaro = (matches / len1 + matches / len2 + (matches - transpositions) / matches) / 3.0;
+
+    const prefixLength = Math.min(PREFIX_LENGTH, Math.min(s1.length, s2.length));
+    let prefix = 0;
+    for (let i = 0; i < prefixLength; i++) {
+        if (s1[i] === s2[i]) {
+            prefix++;
+        } else {
+            break;
+        }
+    }
+    
+    if (jaro < JW_THRESHOLD) {
+        return jaro;
+    }
+    return Math.min(1.0, jaro + PREFIX_SCALE * prefix * (1 - jaro));
+}
+
+class Name {
+    // TODO: make constructor gracefully fail if it can't parse name pieces
+    constructor(nameString) {
+        // names are all lowercase, trimmed, with basic variation in name table 
+        // and get rid of punctuation and make accents closest ascii.
+        // tbh scheduler and rmp might not support non-ascii names but just in case
+
+        this.rawName = nameString;
+        this.prefix = null;
+        this.firstName = null;
+        this.lastName1 = null;
+        this.lastName2 = null;
+        this.suffix = null;
+        if (!nameString) {
+            console.warn("RMP-OSU: Name constructor called with null or empty string.");
+            return;
+        }
+
+        // overall parsing steps
+        // everything is trimmed lowercased and asciid
+        //
+        // ex: "  Dr. John St Smith-Henry Jr."
+
+        nameString = nameString.toLowerCase();
+        nameString = nameString.trim();
+        nameString = Name.removeAccents(nameString);
+
+        this.prefix = Name.extractPrefix(nameString);
+        if (this.prefix) {
+            nameString = nameString.replace(this.prefix, "").trim();
+        }
+        nameString = Name.removePeriods(nameString);
+        nameString = nameString.trim();
+        if (nameString === "") {
+            console.warn("RMP-OSU: Name constructor called with name string that only contains a prefix.", this.rawName, nameString);
+            return
+        }
+
+        // in the case of non defined prefix its kinda over
+        // resolves all firstNames to cononical name
+        const rawFirstName = nameString.split(' ')[0];
+        this.firstName = Name.getBasicFirstName(rawFirstName);
+        nameString = nameString.replace(rawFirstName, '').trim();
+        if (nameString === "") {
+            console.warn("RMP-OSU: Name constructor called with name string that contains nothing past first name.", this.rawName, nameString);
+            return
+        }
+
+        this.suffix = Name.extractSuffix(nameString);
+        nameString = nameString.replace(" " + this.suffix, "").trim();
+
+        if (!nameString.includes('-')) {
+            // non-hyphenated
+            const lastNames = nameString.split(' ');
+            this.lastName1 = lastNames[0].trim();
+            if (lastNames.length > 1) {
+                this.lastName2 = lastNames[1].trim();
+            }
+        }
+        else {
+            // hyphenated
+            const lastNames = nameString.split('-');
+            this.lastName1 = lastNames[0].trim();
+            if (lastNames.length > 1) {
+                this.lastName2 = lastNames[1].trim();
+            }
+            else {
+                console.warn("RMP-OSU: Name constructor called with name string that contains a hyphen but no second last name.", originalNameString, nameString);
+            }
+        }
+
     }
 
+    /**
+     * Check if the name is valid, should always check after construction.
+     * @returns True if firstName and lastName1 are not null.
+     */
+    valid() {
+        return this.firstName != null && this.lastName1 != null;
+    }
+
+    // Mostly going to try equating these kinds of cases:
+    // - "Dr. John Smith" vs "John Smith"
+    // - "John Smith" vs "John A. Smith"
+    // - "John Smith" vs "John Smith Jr."
+    // - "John Smith" vs "John Smith-Henry"
+    // - "John Henry" vs "John Smith-Henry"
+    // - "John Henry-Smith" vs "John Smith-Henry"
+    // - "Alexander Smith" vs "Alex Smith"
+    // - "André Smith" vs "Andre Smith"
+    // and typos
+    similarTo(otherName) {
+        // Check raw names in match table first
+        if (otherName == null) return false;
+        if (MATCH_TABLE[this.rawName]) {
+            return MATCH_TABLE[this.rawName].includes(otherName.rawName);
+        }
+        let score = 0;
+        score += jaroWinklerSimilarity(this.firstName, otherName.firstName) * 1.5;
+        const combined = `${this.lastName1}${this.lastName2 || ""}`;
+        const otherCombined = `${otherName.lastName1}${otherName.lastName2 || ""}`;
+        score += jaroWinklerSimilarity(combined, otherCombined) * 2.5;
+        if (this.prefix && this.prefix === otherName.prefix) score += 0.25;
+        if (this.suffix && this.suffix === otherName.suffix) score += 1;
+        return score >= 3.8;
+    }
+    // All these return the modified string or same string if no changes can be made
+    static removeAccents(nameString) {
+        if (!nameString) return nameString;
+        nameString = nameString.replace(/á|à|â|ã|ä/g, 'a');
+        nameString = nameString.replace(/é|è|ê|ë/g, 'e');
+        nameString = nameString.replace(/í|ì|î|ï/g, 'i');
+        nameString = nameString.replace(/ó|ò|ô|õ|ö/g, 'o');
+        nameString = nameString.replace(/ú|ù|û|ü/g, 'u');
+        nameString = nameString.replace(/ç/g, 'c');
+        nameString = nameString.replace(/ñ/g, 'n');
+        return nameString;
+    }
+    static removePunctuation(nameString) {
+        if (!nameString) return nameString;
+        return nameString.replace(/[^a-z\s]/g, '');
+    }
+    static removePeriods(nameString) {
+        if (!nameString) return nameString;
+        return nameString.replace(/\./g, '');
+    }
+    static extractPrefix(nameString) {
+        if (!nameString) return nameString;
+        nameString = Name.removePunctuation(nameString);
+        const prefix = nameString.split(' ')[0];
+        if (PREFIXES.includes(prefix.toLowerCase())) {
+            return prefix;
+        }
+        return null;
+    }
+    static extractSuffix(nameString) {
+        if (!nameString) return nameString;
+        const parts = nameString.split(' ');
+        if (parts.length === 0) return null;
+        const suffix = parts[parts.length - 1];
+        if (SUFFIXES.includes(suffix.toLowerCase())) {
+            return suffix;
+        }
+        return null;
+    }
+    static getBasicFirstName(firstName) {
+        if (!firstName) return firstName;
+        if (ALIAS_TO_NAME.hasOwnProperty(firstName.toLowerCase())) {
+            return ALIAS_TO_NAME[firstName.toLowerCase()][0];
+        }
+        return firstName;
+    }
+    // TODO fix but its probably not used
+    toString() {
+        const parts = [];
+        if (this.prefix) parts.push(this.prefix);
+        if (this.firstName) parts.push(this.firstName);
+        if (this.lastName1) parts.push(this.lastName1);
+        if (this.lastName2) parts.push(this.lastName2);
+        if (this.suffix) parts.push(this.suffix);
+        return parts.join(' ');
+    }
+}
+
+if (TEST_NAME_MATCHING) {
+    console.log("RMP-OSU: Running name matching tests...");
+    for (const test of nameMatchTests) {
+        const nameA = new Name(test.a);
+        const nameB = new Name(test.b);
+        const result = nameA.similarTo(nameB);
+        console.log(`RMP-OSU: ${test.a} parsed as`, nameA);
+        console.log(`RMP-OSU: ${test.b} parsed as`, nameB);
+        console.log(`RMP-OSU: Similarity between ${test.a} and ${test.b}: ${result}`);
+        console.assert(result === test.expected, `RMP-OSU: Test failed for ${test.a} vs ${test.b}: expected ${test.expected}, got ${result}. Note: ${test.note}`);
+    }
+}
+
+// ===================================================
+// Content Script
+// ===================================================
+
+const profDataCache = {}
+const crnToInstructorCache = {}
+const classNameToSectionDataCache = {}
+
+// Use scheduler.rawName as key
+function getProfDataCache(key) {
+    return profDataCache[key];
+}
+function setProfDataCache(key, value) {
+    profDataCache[key] = value;
+}
+
+function getCrnToInstructorCache(key) {
+    return crnToInstructorCache[key];
+}
+function setCrnToInstructorCache(key, value) {
+    crnToInstructorCache[key] = value;
+}
+
+function getClassNameToSectionDataCache(key) {
+    return classNameToSectionDataCache[key];
+}
+function setClassNameToSectionDataCache(key, value) {
+    classNameToSectionDataCache[key] = value;
+}
+
+
+class ProfessorData {
+    // scheduleName is the canonical name for display and reference
+    constructor(rmpName, scheduleName, avgRating, numRatings, wouldTakeAgainPercent, avgDifficulty, legacyId) {
+        this.rmpName = rmpName; 
+        this.scheduleName = scheduleName; 
+        this.avgRating = avgRating;
+        if (avgRating != null) {
+            this.avgRating = avgRating.toPrecision(2);
+        }
+        this.numRatings = numRatings;
+        this.wouldTakeAgainPercent = wouldTakeAgainPercent;
+        this.avgDifficulty = avgDifficulty;
+        if (avgDifficulty != null) {
+            this.avgDifficulty = avgDifficulty.toPrecision(2);
+        }
+        this.legacyId = legacyId;
+    }
     getProfLink() {
         if (this.legacyId) {
             return `https://www.ratemyprofessors.com/professor/${this.legacyId}`;
@@ -21,12 +387,11 @@ class ProfessorData {
             return null;
         }
     }
-
-    getFullName() {
-        if (!this.firstName || !this.lastName) {
+    getScheduleName() {
+        if (!this.scheduleName) {
             return null;
         }
-        return `${this.firstName} ${this.lastName}`;
+        return this.scheduleName.rawName;
     }
 }
 
@@ -46,16 +411,17 @@ function getProfessorDescriptionElement() {
 // }
 
 
-async function getProfessorDataFor(professorName) {
-    if (professorName == null || professorName.trim() === "") {
+async function makeProfessorData(schedulerName) {
+    if (schedulerName == null || schedulerName.trim() === "") {
         console.log("RMP-OSU: No professor name provided");
         return null;
     }
-    if (profDataCache[professorName]) {
-        console.log("RMP-OSU: Returning cached data for " + professorName);
-        return profDataCache[professorName];
+    const cached = getProfDataCache(schedulerName);
+    if (cached) {
+        console.log("RMP-OSU: Returning cached data for " + schedulerName);
+        return cached;
     }
-    console.log("RMP-OSU: Requesting RMP data for " + professorName);
+    console.log("RMP-OSU: Requesting RMP data for " + schedulerName);
     const gqlQuery = `
         query NewSearch($query: TeacherSearchQuery!) {
             newSearch {
@@ -78,6 +444,11 @@ async function getProfessorDataFor(professorName) {
             }
         }
     `;
+
+    // thank you ansel for "lastname, first" idea
+    let searchName = schedulerName.split(" ");
+    searchName = `${searchName.slice(1).join(" ")} ${searchName[0]}`;
+
     const response = await chrome.runtime.sendMessage({
         type: "fetchRequest",
         method: "POST",
@@ -90,91 +461,93 @@ async function getProfessorDataFor(professorName) {
             query: gqlQuery,
             variables: {
                 query: {
-                    text: professorName,
+                    text: searchName,
                     schoolID: "U2Nob29sLTc0Mg=="
                 }
             }
         })
     })
     if (!response.success) {
-        console.error("RMP-OSU: Failed to fetch RMP data for " + professorName + ": " + response.error);
+        console.error("RMP-OSU: Failed to get a response for " + schedulerName + ": " + response.error);
         return null;
     }
     const gqlResponse = JSON.parse(response.data);
     if (gqlResponse.errors) {
-        console.error("RMP-OSU: GraphQL error while fetching RMP data for " + professorName + ": " + gqlResponse.errors.map(e => e.message).join(", "));
+        console.error("RMP-OSU: GraphQL error(s) found in JSON response while fetching RMP data for " + schedulerName + ": " + gqlResponse.errors.map(e => e.message).join(", "));
         return null;
     }
-    const teachers = gqlResponse.data.newSearch.teachers.edges;
-    if (teachers.length === 0) {
-        console.log("RMP-OSU: No RMP data found for " + professorName);
+    const rmpTeachers = gqlResponse.data.newSearch.teachers.edges;
+    if (rmpTeachers.length === 0) {
+        console.log("RMP-OSU: No teachers found in GraphQL query for " + schedulerName);
         return null;
     }
     // TODO: Make amount of results to match configureable
-    for (let i = 0; i < teachers.length; i++) {
-        const teacher = teachers[i].node;
-        const fullNameStripped = `${teacher.firstName}${teacher.lastName}`.toLowerCase().replace(/[.\s]+/g, '');
-        const professorNameStripped = professorName.toLowerCase().replace(/[.\s]+/g, '');
-        console.log(`RMP-OSU: Comparing ${fullNameStripped} to ${professorNameStripped}`);
-        if (fullNameStripped === professorNameStripped) {
-            const profData = new ProfessorData(
-                teacher.firstName,
-                teacher.lastName,
-                teacher.avgRating,
-                teacher.numRatings,
-                teacher.wouldTakeAgainPercent,
-                teacher.avgDifficulty,
-                teacher.legacyId
-            );
-            console.log(`RMP-OSU: Found matching RMP data for ${professorName} with name ${teacher.firstName} ${teacher.lastName}`, profData);
-            profDataCache[professorName] = profData;
-            return profData;
+    for (let i = 0; i < rmpTeachers.length; i++) {
+        const rmpTeacher = rmpTeachers[i].node;
+        const rmpName = new Name(`${rmpTeacher.firstName} ${rmpTeacher.lastName}`);
+        const schedlName = new Name(schedulerName);
+        const probablySame = rmpName.similarTo(schedlName);
+        if (!probablySame) {
+            continue;
         }
+        const profData = new ProfessorData(
+            rmpName,
+            schedlName,
+            rmpTeacher.avgRating,
+            rmpTeacher.numRatings,
+            rmpTeacher.wouldTakeAgainPercent,
+            rmpTeacher.avgDifficulty,
+            rmpTeacher.legacyId
+        );
+        console.log(`RMP-OSU: Found matching RMP data for ${schedulerName} with name ${rmpTeacher.firstName} ${rmpTeacher.lastName}`, profData);
+        setProfDataCache(schedlName.rawName, profData);
+        return profData;
     }
-    console.log("RMP-OSU: No matching RMP data found for " + professorName);
+    console.log("RMP-OSU: No matching RMP data found for " + schedulerName);
     return null;
 }
 
-function createRatingElement(profData, fallbackName = null) {
+function createRatingElement(profData, schedulerName = null) {
     const ratingEl = document.createElement("div");
     ratingEl.style.marginTop = "5px";
     ratingEl.style.fontSize = "14px";
     let text = "";
     if (profData != null && profData.legacyId != null && profData.avgRating != null && profData.numRatings != null) {
-        text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} ratings)`;
+        text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${schedulerName}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} ratings)`;
         if (profData.numRatings == 1) {
-            text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} rating)`;
+            text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${schedulerName}</strong></a>  ${profData.avgRating}⭐ (${profData.numRatings} rating)`;
         }
         if (profData.numRatings == 0) {
-            text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${profData.getFullName()}</strong></a> (No ratings)`;
+            text = `<a href="${profData.getProfLink()}" target="_blank"><strong>${schedulerName}</strong></a> (No ratings)`;
         }        
     }        
     else {
-        console.log("RMP-OSU: No RMP data for " + fallbackName);
-        text = `<strong> ${fallbackName}</strong> (No RMP Data)`;
+        console.log("RMP-OSU: No RMP match for " + schedulerName);
+        text = `<a title="Search for name on RateMyProfessor" href="https://www.ratemyprofessors.com/search/professors/742?q=${encodeURIComponent(schedulerName)}" target="_blank"><strong> ${schedulerName}</strong></a> (No RMP Match)`;
     }
     ratingEl.innerHTML = text;
     return ratingEl;
 }
 
 async function addRMPToClassDescription() {
-    const instructorEl = getProfessorDescriptionElement();
-    if (!instructorEl || instructorEl.length === 0) return;
-    if (instructorEl.classList.contains("rmp-osu-injected")) return;
-    const instructorName = instructorEl.textContent?.trim();
-    if (instructorName == null) return;
-    console.log("RMP-OSU: Found instructor name:", instructorEl.textContent);
-    const profData = await getProfessorDataFor(instructorName);
-    instructorEl.textContent = "";
-    instructorEl.classList.add("rmp-osu-injected");
-    const ratingEl = createRatingElement(profData, instructorName);
-    instructorEl.appendChild(ratingEl);
+    const profElement = getProfessorDescriptionElement();
+    if (!profElement || profElement.length === 0) return;
+    if (profElement.classList.contains("rmp-osu-injected")) return;
+    const schedulerProfName = profElement.textContent.trim();
+    if (schedulerProfName == "") return;
+    console.log("RMP-OSU: Found instructor name:", profElement.textContent);
+    const profData = await makeProfessorData(schedulerProfName);
+    profElement.textContent = "";
+    profElement.classList.add("rmp-osu-injected");
+    const ratingEl = createRatingElement(profData, schedulerProfName);
+    profElement.appendChild(ratingEl);
 }
 
-async function getInstructorForCRN(crn) {
-    if (crnToInstructorCache[crn]) {
-        console.log(`RMP-OSU: Returning cached instructor ${crnToInstructorCache[crn]} for CRN ${crn}`);
-        return crnToInstructorCache[crn];
+async function getInstructorNameForCRN(crn) {
+    const cachedInstructor = getCrnToInstructorCache(crn);
+    if (cachedInstructor) {
+        console.log(`RMP-OSU: Returning cached instructor ${cachedInstructor} for CRN ${crn}`);
+        return cachedInstructor;
     }
     const response = await chrome.runtime.sendMessage({
         type: "fetchRequest",
@@ -196,7 +569,7 @@ async function getInstructorForCRN(crn) {
     tempDiv.style.display = "none";
     tempDiv.innerHTML = parsed.instructordetail_html;
     const instructorName = tempDiv.textContent.trim();
-    crnToInstructorCache[crn] = instructorName;
+    setCrnToInstructorCache(crn, instructorName);
     return instructorName;
 }
 
@@ -209,9 +582,10 @@ function getSectionTitleRow() {
 }
 
 async function getSectionDataFor(className) {
-    if (classNameToSectionDataCache[className]) {
+    const cachedSectionData = getClassNameToSectionDataCache(className);
+    if (cachedSectionData) {
         console.log(`RMP-OSU: Returning cached section data for ${className}`);
-        return classNameToSectionDataCache[className];
+        return cachedSectionData.allInGroup;
     }
     const response = await chrome.runtime.sendMessage({
         type: "fetchRequest",
@@ -224,8 +598,12 @@ async function getSectionDataFor(className) {
         },
         body: `{"group": "code:${className}"}`
     });
+    if (!response.success) {
+        console.error(`RMP-OSU: Failed to fetch section data for ${className}: ${response.error}`);
+        return null;
+    }
     const parsed = JSON.parse(response.body);
-    classNameToSectionDataCache[className] = parsed;
+    setClassNameToSectionDataCache(className, parsed);
     return parsed.allInGroup;
 }
 
@@ -283,9 +661,9 @@ async function addRMPToSections() {
         if (section.classList.contains("rmp-osu-injected")) continue;
         section.classList.add("rmp-osu-injected");
         const crn = getSectionCRN(section);
-        const instructor = await getInstructorForCRN(crn);
-        if (instructor != null && instructor.trim() !== "") {
-            const profData = await getProfessorDataFor(instructor);
+        const schedulerName = await getInstructorNameForCRN(crn);
+        if (schedulerName != null && schedulerName.trim() !== "") {
+            const profData = await makeProfessorData(schedulerName);
             if (profData != null) {
                 console.log(`RMP-OSU: Got RMP data for section ${crn}:`, profData);
                 const instructorValue = createSectionColValueElement("instructor");
@@ -293,10 +671,10 @@ async function addRMPToSections() {
                 link.href = profData.getProfLink();
                 link.target = "_blank";
                 if (profData.numRatings == 0) {
-                    link.textContent = `${profData.getFullName()} (No ratings)`;
+                    link.textContent = `${schedulerName} (No ratings)`;
                 }
                 else {
-                    link.textContent = `${profData.getFullName()} ${profData.avgRating}⭐`;
+                    link.textContent = `${schedulerName} ${profData.avgRating}⭐`;
                 }
                 instructorValue.appendChild(link);
                 const ratingValue = createSectionColValueElement("rating");
@@ -306,14 +684,14 @@ async function addRMPToSections() {
                 continue
             }
         }
-        console.log(`RMP-OSU: No RMP data for section ${crn} with instructor ${instructor}`);
+        console.log(`RMP-OSU: No RMP data for section ${crn} with instructor ${schedulerName}`);
         const instructorValue = createSectionColValueElement("instructor");
         const link = document.createElement("p");
-        if (instructor == null || instructor.trim() === "") {
+        if (schedulerName == null || schedulerName.trim() === "") {
             link.textContent = `(N/A)`;
         }
         else {
-            link.textContent = `${instructor} (Not in RMP)`;
+            link.textContent = `${schedulerName} (No RMP match)`;
         }
         instructorValue.appendChild(link);
         const ratingValue = createSectionColValueElement("rating");
@@ -347,4 +725,3 @@ async function main() {
 
 console.log("RMP-OSU: Content script loaded.");
 main();
-
