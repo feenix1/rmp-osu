@@ -81,6 +81,7 @@ const NAME_TO_ALIAS = {
 const MATCH_TABLE = {
     'Alex Guyer': ['Alexander Guyer'],
     'Tim Alcon': ['Timothy Alcon'],
+    'Kara Trummel Obermire': ['Kara Obermire'],
 }
 
 // reverse lookup
