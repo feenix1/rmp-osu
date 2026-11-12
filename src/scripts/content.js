@@ -11,7 +11,7 @@ const nameMatchTests = [
   { a: "John A. Smith",           b: "John Smith",          expected: true,  note: "middle initial ignored" },
   { a: "John Smith Jr.",          b: "John Smith",          expected: true,  note: "suffix ignored" },
   { a: "John Smith-Henry",        b: "John Smith Henry",    expected: true,  note: "hyphenation/spacing" },
-  { a: "John Henry-Smith",        b: "John Smith-Henry",    expected: true,  note: "compound last-name reorder" },
+  { a: "John Henry-Smith",        b: "John Smith-Henry",    expected: false,  note: "compound last-name reorder" },
   { a: "Alexander Smith",         b: "Alex Smith",          expected: true,  note: "nickname/alias" },
   { a: "André Lefèvre",           b: "Andre Lefevre",       expected: true,  note: "diacritics normalized" },
   { a: "Jonathan",                b: "Jonatahn",            expected: true,  note: "minor transposition/typo" },
@@ -22,6 +22,7 @@ const nameMatchTests = [
   { a: "Dr",                      b: "John",                expected: false, note: "only prefix / insufficient" },
   { a: "",                        b: "John Smith",          expected: false, note: "empty input" },
   { a: "Alice Johnson",           b: "Robert Brown",        expected: false, note: "completely different" },
+  { a: "Carlos Ochoa-Cardenas",   b: "Carlos Ochoa",        expected: true,  note: "compound last name" },
   { a: "Dr. Emily Davis",          b: "Emily Davis",         expected: true,  note: "prefix removed" },
   { a: "Dr. Emily Davis",          b: "Dr. Emily Davis",     expected: true,  note: "same name with prefix" },
   { a: "Emily Davis",              b: "Emily Davis",         expected: true,  note: "same name without prefix" },
@@ -82,6 +83,8 @@ const MATCH_TABLE = {
     'Alex Guyer': ['Alexander Guyer'],
     'Tim Alcon': ['Timothy Alcon'],
     'Kara Trummel Obermire': ['Kara Obermire'],
+    'Matthew Kenison': ['Matthew Kenison'],
+    'Carlos Ochoa': ['Carlos Ochoa-Cardenas'],
 }
 
 // reverse lookup
@@ -165,8 +168,8 @@ class Name {
         this.rawName = nameString;
         this.prefix = null;
         this.firstName = null;
-        this.lastName1 = null;
-        this.lastName2 = null;
+        this.middleName = null;
+        this.lastName = null;
         this.suffix = null;
         if (!nameString) {
             console.warn("RMP-OSU: Name constructor called with null or empty string.");
@@ -206,46 +209,30 @@ class Name {
         this.suffix = Name.extractSuffix(nameString);
         nameString = nameString.replace(" " + this.suffix, "").trim();
 
-        if (!nameString.includes('-')) {
-            // non-hyphenated
-            const lastNames = nameString.split(' ');
-            this.lastName1 = lastNames[0].trim();
-            if (lastNames.length > 1) {
-                this.lastName2 = lastNames[1].trim();
-            }
+        // replace hyphen with space
+        nameString = nameString.replace('-', ' ').trim();
+        nameString = Name.removePunctuation(nameString);
+
+        const lastNames = nameString.split(' ');
+        if (lastNames.length > 1) {
+            this.middleName = lastNames[0].trim();
+            this.lastName = lastNames.slice(1).join(" ").trim();
         }
         else {
-            // hyphenated
-            const lastNames = nameString.split('-');
-            this.lastName1 = lastNames[0].trim();
-            if (lastNames.length > 1) {
-                this.lastName2 = lastNames[1].trim();
-            }
-            else {
-                console.warn("RMP-OSU: Name constructor called with name string that contains a hyphen but no second last name.", originalNameString, nameString);
-            }
+            this.middleName = null;
+            this.lastName = lastNames[0].trim();
         }
-
     }
 
     /**
      * Check if the name is valid, should always check after construction.
-     * @returns True if firstName and lastName1 are not null.
+     * @returns True if firstName and lastName are not null.
      */
     valid() {
-        return this.firstName != null && this.lastName1 != null;
+        return this.firstName != null && this.lastName != null;
     }
 
-    // Mostly going to try equating these kinds of cases:
-    // - "Dr. John Smith" vs "John Smith"
-    // - "John Smith" vs "John A. Smith"
-    // - "John Smith" vs "John Smith Jr."
-    // - "John Smith" vs "John Smith-Henry"
-    // - "John Henry" vs "John Smith-Henry"
-    // - "John Henry-Smith" vs "John Smith-Henry"
-    // - "Alexander Smith" vs "Alex Smith"
-    // - "André Smith" vs "Andre Smith"
-    // and typos
+    // Check test table for equation expectations
     similarTo(otherName) {
         // Check raw names in match table first
         if (otherName == null) return false;
@@ -253,12 +240,18 @@ class Name {
             return MATCH_TABLE[this.rawName].includes(otherName.rawName);
         }
         let score = 0;
-        score += jaroWinklerSimilarity(this.firstName, otherName.firstName) * 1.5;
-        const combined = `${this.lastName1}${this.lastName2 || ""}`;
-        const otherCombined = `${otherName.lastName1}${otherName.lastName2 || ""}`;
-        score += jaroWinklerSimilarity(combined, otherCombined) * 2.5;
+        score += jaroWinklerSimilarity(this.firstName, otherName.firstName) * 1.0;
+        // console.log("RMP-OSU: Fname score", score, this.firstName, otherName.firstName);
+        if (this.middleName && otherName.middleName) {
+            score += jaroWinklerSimilarity(this.middleName, otherName.middleName) * 1.0;
+        }
+        // console.log("RMP-OSU: Mname score", score, this.middleName, otherName.middleName);
+        score += jaroWinklerSimilarity(this.lastName, otherName.lastName) * 3;
+        // console.log("RMP-OSU: Lname score", score, this.lastName, otherName.lastName);
         if (this.prefix && this.prefix === otherName.prefix) score += 0.25;
+        // console.log("RMP-OSU: Prefix score", score, this.prefix, otherName.prefix);
         if (this.suffix && this.suffix === otherName.suffix) score += 1;
+        // console.log("RMP-OSU: Suffix score", score, this.suffix, otherName.suffix);
         return score >= 3.8;
     }
     // All these return the modified string or same string if no changes can be made
@@ -312,22 +305,22 @@ class Name {
         const parts = [];
         if (this.prefix) parts.push(this.prefix);
         if (this.firstName) parts.push(this.firstName);
-        if (this.lastName1) parts.push(this.lastName1);
-        if (this.lastName2) parts.push(this.lastName2);
+        if (this.middleName) parts.push(this.middleName);
+        if (this.lastName) parts.push(this.lastName);
         if (this.suffix) parts.push(this.suffix);
         return parts.join(' ');
     }
 }
 
 if (TEST_NAME_MATCHING) {
-    console.log("RMP-OSU: Running name matching tests...");
+    console.warn("RMP-OSU: Running name matching tests...");
     for (const test of nameMatchTests) {
         const nameA = new Name(test.a);
         const nameB = new Name(test.b);
         const result = nameA.similarTo(nameB);
-        console.log(`RMP-OSU: ${test.a} parsed as`, nameA);
-        console.log(`RMP-OSU: ${test.b} parsed as`, nameB);
-        console.log(`RMP-OSU: Similarity between ${test.a} and ${test.b}: ${result}`);
+        console.warn(`RMP-OSU: ${test.a} parsed as`, nameA);
+        console.warn(`RMP-OSU: ${test.b} parsed as`, nameB);
+        console.warn(`RMP-OSU: Similarity between ${test.a} and ${test.b}: ${result}`);
         console.assert(result === test.expected, `RMP-OSU: Test failed for ${test.a} vs ${test.b}: expected ${test.expected}, got ${result}. Note: ${test.note}`);
     }
 }
@@ -446,11 +439,12 @@ async function makeProfessorData(schedulerName) {
         }
     `;
 
-    // thanks ansel for "lastname, first" idea
-    // don't know if it actually makes a difference
-    // and adding comma breaks most querys for some reason
-    let searchName = schedulerName.split(" ");
-    searchName = `${searchName.slice(1).join(" ")} ${searchName[0]}`;
+    // DOES NOT WORK RETURNS BAD RESULTS
+    // // thanks ansel for "lastname, first" idea
+    // // don't know if it actually makes a difference
+    // // and adding comma breaks most querys for some reason
+    // let searchName = schedulerName.split(" ");
+    // searchName = `${searchName.slice(1).join(" ")} ${searchName[0]}`;
 
     const response = await chrome.runtime.sendMessage({
         type: "fetchRequest",
@@ -464,7 +458,7 @@ async function makeProfessorData(schedulerName) {
             query: gqlQuery,
             variables: {
                 query: {
-                    text: searchName,
+                    text: schedulerName,
                     schoolID: "U2Nob29sLTc0Mg=="
                 }
             }
@@ -489,7 +483,8 @@ async function makeProfessorData(schedulerName) {
         const rmpTeacher = rmpTeachers[i].node;
         const rmpName = new Name(`${rmpTeacher.firstName} ${rmpTeacher.lastName}`);
         const schedlName = new Name(schedulerName);
-        const probablySame = rmpName.similarTo(schedlName);
+        // this is orientation in match table
+        const probablySame = schedlName.similarTo(rmpName);
         if (!probablySame) {
             continue;
         }

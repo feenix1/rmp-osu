@@ -1,5 +1,7 @@
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    console.log("Background script received message:", msg);
     if (msg.type !== "fetchRequest") return;
+    console.log("Received message as fetchRequest:", msg);
     const url = msg.url;
     const method = msg.method || "GET";
     const headers = msg.headers || {
@@ -15,6 +17,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type !== "storeDataSync") return;
+    console.log("Received message as storeDataSync:", msg);
     const key = msg.key;
     const value = msg.value;
     chrome.storage.sync.set({ [key]: value }, () => {
@@ -25,6 +28,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type !== "readDataSync") return;
+    console.log("Received message as readDataSync:", msg);
     const key = msg.key;
     chrome.storage.sync.get([key], (result) => {
         sendResponse({ success: true, data: result[key] });

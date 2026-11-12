@@ -15,7 +15,7 @@
   "background": {
     "type": "module",
     "scripts": [
-      "browser.js"
+      "scripts/browser.js"
     ]
   },
   "browser_specific_settings": {
