@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Oregon State University Scheduler + Rate My Professor",
+  "name": "OSU Scheduler + Rate My Professor",
   "description": "Adds Rate My Professor scores to all available instructors on classes.oregonstate.edu",
   "version": "2.2.0",
   "icons": {
