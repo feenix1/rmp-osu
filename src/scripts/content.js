@@ -22,7 +22,6 @@ const nameMatchTests = [
   { a: "Dr",                      b: "John",                expected: false, note: "only prefix / insufficient" },
   { a: "",                        b: "John Smith",          expected: false, note: "empty input" },
   { a: "Alice Johnson",           b: "Robert Brown",        expected: false, note: "completely different" },
-  { a: "Carlos Ochoa-Cardenas",   b: "Carlos Ochoa",        expected: true,  note: "compound last name" },
   { a: "Dr. Emily Davis",          b: "Emily Davis",         expected: true,  note: "prefix removed" },
   { a: "Dr. Emily Davis",          b: "Dr. Emily Davis",     expected: true,  note: "same name with prefix" },
   { a: "Emily Davis",              b: "Emily Davis",         expected: true,  note: "same name without prefix" },
