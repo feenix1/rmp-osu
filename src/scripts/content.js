@@ -29,6 +29,7 @@ const nameMatchTests = [
   { a: "Jaques St Pierre",          b: "Jaques StPierre",   expected: true,  note: "splitting of compound last name" },
   { a: "Jaques St Pierre",          b: "Jaques StMierre",   expected: false,  note: "last names different" },
   { a: "Carlogs Blath llkjlk Pierre",          b: "Carlogs Pierre",   expected: true,  note: "compound last name" },
+  { a: "Timothy Alcon",          b: "Tim Alcon",   expected: true,  note: "real world first name alias" },
 ];
 
 // Tables and suffixes from https://github.com/craj/name-match/blob/main/src/name-normalizer.js
@@ -40,11 +41,11 @@ const NAME_TO_ALIAS = {
   'robert': ['rob', 'bob', 'bobby', 'robbie'],
   'richard': ['rick', 'dick', 'richie', 'ricky'],
   'michael': ['mike'],
-  'joseph': ['joe', 'joey', 'jo'],
+  'joseph': ['joe', 'joey'],
   'thomas': ['tom', 'tommy'],
   'christopher': ['chris'],
-  'charles': ['chuck', 'charlie', 'chas'],
-  'daniel': ['dan', 'danny'],
+  'charles': ['chuck', 'charlie'],
+  'daniel': ['dan'],
   'matthew': ['matt', 'matty', 'mathew'],
   'anthony': ['tony'],
   'steven': ['steve', 'stevie'],
@@ -76,8 +77,10 @@ const NAME_TO_ALIAS = {
   'joshua': ['josh']
 };
 
+// scheduler key to RMP names
 const MATCH_TABLE = {
     'Alex Guyer': ['Alexander Guyer'],
+    'Tim Alcon': ['Timothy Alcon'],
 }
 
 // reverse lookup
@@ -191,9 +194,9 @@ class Name {
 
         // in the case of non defined prefix its kinda over
         // resolves all firstNames to cononical name
-        const rawName = nameString.split(' ')[0];
-        this.firstName = Name.getBasicFirstName(rawName);
-        nameString = nameString.replace(rawName, '').trim();
+        const rawFirstName = nameString.split(' ')[0];
+        this.firstName = Name.getBasicFirstName(rawFirstName);
+        nameString = nameString.replace(rawFirstName, '').trim();
         if (nameString === "") {
             console.warn("RMP-OSU: Name constructor called with name string that contains nothing past first name.", this.rawName, nameString);
             return
@@ -249,11 +252,11 @@ class Name {
             return MATCH_TABLE[this.rawName].includes(otherName.rawName);
         }
         let score = 0;
-        score += jaroWinklerSimilarity(this.firstName, otherName.firstName) * 2;
+        score += jaroWinklerSimilarity(this.firstName, otherName.firstName) * 1.5;
         const combined = `${this.lastName1}${this.lastName2 || ""}`;
         const otherCombined = `${otherName.lastName1}${otherName.lastName2 || ""}`;
-        score += jaroWinklerSimilarity(combined, otherCombined) * 2;
-        if (this.prefix && this.prefix === otherName.prefix) score += 1;
+        score += jaroWinklerSimilarity(combined, otherCombined) * 2.5;
+        if (this.prefix && this.prefix === otherName.prefix) score += 0.25;
         if (this.suffix && this.suffix === otherName.suffix) score += 1;
         return score >= 3.8;
     }
@@ -303,6 +306,7 @@ class Name {
         }
         return firstName;
     }
+    // TODO fix but its probably not used
     toString() {
         const parts = [];
         if (this.prefix) parts.push(this.prefix);
@@ -383,7 +387,7 @@ class ProfessorData {
             return null;
         }
     }
-    getFullName() {
+    getScheduleName() {
         if (!this.scheduleName) {
             return null;
         }
@@ -440,6 +444,11 @@ async function makeProfessorData(schedulerName) {
             }
         }
     `;
+
+    // thank you ansel for "lastname, first" idea
+    let searchName = schedulerName.split(" ");
+    searchName = `${searchName.slice(1).join(" ")} ${searchName[0]}`;
+
     const response = await chrome.runtime.sendMessage({
         type: "fetchRequest",
         method: "POST",
@@ -452,7 +461,7 @@ async function makeProfessorData(schedulerName) {
             query: gqlQuery,
             variables: {
                 query: {
-                    text: schedulerName,
+                    text: searchName,
                     schoolID: "U2Nob29sLTc0Mg=="
                 }
             }
@@ -478,20 +487,21 @@ async function makeProfessorData(schedulerName) {
         const rmpName = new Name(`${rmpTeacher.firstName} ${rmpTeacher.lastName}`);
         const schedlName = new Name(schedulerName);
         const probablySame = rmpName.similarTo(schedlName);
-        if (probablySame) {
-            const profData = new ProfessorData(
-                rmpName,
-                schedlName,
-                rmpTeacher.avgRating,
-                rmpTeacher.numRatings,
-                rmpTeacher.wouldTakeAgainPercent,
-                rmpTeacher.avgDifficulty,
-                rmpTeacher.legacyId
-            );
-            console.log(`RMP-OSU: Found matching RMP data for ${schedulerName} with name ${rmpTeacher.firstName} ${rmpTeacher.lastName}`, profData);
-            setProfDataCache(schedlName.rawName, profData);
-            return profData;
+        if (!probablySame) {
+            continue;
         }
+        const profData = new ProfessorData(
+            rmpName,
+            schedlName,
+            rmpTeacher.avgRating,
+            rmpTeacher.numRatings,
+            rmpTeacher.wouldTakeAgainPercent,
+            rmpTeacher.avgDifficulty,
+            rmpTeacher.legacyId
+        );
+        console.log(`RMP-OSU: Found matching RMP data for ${schedulerName} with name ${rmpTeacher.firstName} ${rmpTeacher.lastName}`, profData);
+        setProfDataCache(schedlName.rawName, profData);
+        return profData;
     }
     console.log("RMP-OSU: No matching RMP data found for " + schedulerName);
     return null;
@@ -661,10 +671,10 @@ async function addRMPToSections() {
                 link.href = profData.getProfLink();
                 link.target = "_blank";
                 if (profData.numRatings == 0) {
-                    link.textContent = `${profData.getFullName()} (No ratings)`;
+                    link.textContent = `${schedulerName} (No ratings)`;
                 }
                 else {
-                    link.textContent = `${profData.getFullName()} ${profData.avgRating}⭐`;
+                    link.textContent = `${schedulerName} ${profData.avgRating}⭐`;
                 }
                 instructorValue.appendChild(link);
                 const ratingValue = createSectionColValueElement("rating");
