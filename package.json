@@ -7,6 +7,7 @@
   "scripts": {
     "automation": ".\\tools\\.venv\\Scripts\\python .\\tools\\automation.py",
     "switchchrome": ".\\tools\\.venv\\Scripts\\python .\\tools\\automation.py switch chrome",
-    "switchfirefox": ".\\tools\\.venv\\Scripts\\python .\\tools\\automation.py switch firefox"
+    "switchfirefox": ".\\tools\\.venv\\Scripts\\python .\\tools\\automation.py switch firefox",
+    "build": "cd .\\src && web-ext build -a ..\\build"
   }
 }
