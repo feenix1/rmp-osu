@@ -2,3 +2,4 @@
 rmp-osu/web-ext-artifacts/**
 rmp-osu.pem
 .amo-upload-uuid
+/build

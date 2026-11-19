@@ -8,6 +8,6 @@
     "automation": ".\\tools\\.venv\\Scripts\\python .\\tools\\automation.py",
     "switchchrome": ".\\tools\\.venv\\Scripts\\python .\\tools\\automation.py switch chrome",
     "switchfirefox": ".\\tools\\.venv\\Scripts\\python .\\tools\\automation.py switch firefox",
-    "build": "cd .\\src && web-ext build -a ..\\build"
+    "build": "npm run automation switch chrome && cd .\\src && web-ext build -a ..\\build\\chrome && npm run automation switch firefox && web-ext build -a ..\\build\\firefox"
   }
 }
