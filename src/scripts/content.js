@@ -388,8 +388,8 @@ class ProfessorData {
     }
 }
 
-function getProfessorDescriptionElement() {
-    return document.querySelector(".instructor-detail");
+function getProfessorDescriptionElements() {
+    return document.querySelectorAll(".instructor-detail, .calendar_viewing__instr");
 }
 
 // // could be unperformant on large lists? use sparingly
@@ -526,8 +526,7 @@ function createRatingElement(profData, schedulerName = null) {
     return ratingEl;
 }
 
-async function addRMPToClassDescription() {
-    const profElement = getProfessorDescriptionElement();
+async function addRMPToProfessorElement(profElement) {
     if (!profElement || profElement.length === 0) return;
     if (profElement.classList.contains("rmp-osu-injected")) return;
     const schedulerProfName = profElement.textContent.trim();
@@ -539,6 +538,14 @@ async function addRMPToClassDescription() {
     const ratingEl = createRatingElement(profData, schedulerProfName);
     profElement.appendChild(ratingEl);
 }
+
+async function addRMPToClassDescription() {
+    const profElements = getProfessorDescriptionElements();
+    for (const profElement of profElements) {
+        await addRMPToProfessorElement(profElement);
+    }
+}
+
 
 async function getInstructorNameForCRN(crn) {
     const cachedInstructor = getCrnToInstructorCache(crn);
